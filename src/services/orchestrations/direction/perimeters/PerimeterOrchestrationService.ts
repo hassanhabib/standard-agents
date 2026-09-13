@@ -145,12 +145,18 @@ export class PerimeterOrchestrationService {
 // Matched by the key it was given for. An answer given for one act is only ever an answer for
 // another if nobody checks: what a person approved was a file, a command, a deletion, not whatever
 // the run happened to propose next.
+// And consumed once. A decision is an answer to one act, not a mood for the rest of the run: an
+// approval that kept answering would be the "yes to everything" button this client deliberately
+// does not have, arriving through the back door.
 function carriedDecisionFor(effect: AgentEffect): ApprovalVerdict | null {
-  const carried = AgentRun.current()?.decision ?? null;
+  const run = AgentRun.current();
+  const carried = run?.decision ?? null;
 
-  if (carried === null || carried.idempotencyKey !== effect.idempotencyKey) {
+  if (run === null || carried === null || carried.idempotencyKey !== effect.idempotencyKey) {
     return null;
   }
+
+  run.decision = null;
 
   return carried.decision === "Approved" ? "Approved" : "Denied";
 }
