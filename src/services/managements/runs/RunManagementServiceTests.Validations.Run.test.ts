@@ -33,4 +33,29 @@ describe("RunManagementService run validations", () => {
     verifyNoOtherCalls(loggingBrokerMock, { logError: 1 });
   });
 
+
+  it("ShouldLetARunWithNoPromptThroughWhenItCarriesAnAnswerToAHeldActAsync", async () => {
+    // given
+    // A resumed run answering an act it already proposed. There is no new ask here: the person
+    // pressed Allow on a card, which is not a sentence, and a client that had to invent one would
+    // be writing words into somebody's conversation and showing them back as theirs.
+    const { dataCoordinationServiceMock, runManagementService } = createRunManagementServiceTests();
+    dataCoordinationServiceMock.recallSession.mockResolvedValue(null);
+    dataCoordinationServiceMock.recordSession.mockResolvedValue(undefined);
+    dataCoordinationServiceMock.retrieveRemoteTools.mockResolvedValue([]);
+
+    const resumed = {
+      ...createPromptRequest("", "a-session"),
+      decision: { idempotencyKey: "the-key-the-answer-is-for", decision: "Approved" as const },
+    };
+
+    // when
+    const actualException = await runManagementService.run(resumed).then(() => undefined, (error: unknown) => error);
+
+    // then
+    // Not refused for the prompt. What happens after this is the loop's business; what matters
+    // here is that an empty ask carrying an answer is a legitimate request.
+    expect(actualException).not.toBeInstanceOf(AgentCoordinationValidationException);
+  });
+
 });
