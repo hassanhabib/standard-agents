@@ -1,0 +1,4 @@
+[submodule "conformance/reference"]
+	path = conformance/reference
+	url = https://github.com/hassanhabib/The-Standard-Agent.git
+	shallow = true
