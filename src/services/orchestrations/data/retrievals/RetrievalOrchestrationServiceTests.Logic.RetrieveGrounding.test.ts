@@ -26,4 +26,24 @@ describe("RetrievalOrchestrationService retrieveGrounding logic", () => {
     verifyNoOtherCalls(externalToolServiceMock);
   });
 
+
+  it("ShouldGroundNothingWhenThereIsNoQueryToGroundAsync", async () => {
+    // given
+    // A run that carries an answer to an act it already proposed and asks for nothing new. There
+    // is no question here to look anything up for.
+    const { knowledgeServiceMock, loggingBrokerMock, retrievalOrchestrationService } =
+      createRetrievalOrchestrationServiceTests();
+
+    // when
+    const actualPassages = await retrievalOrchestrationService.retrieveGrounding("   ");
+
+    // then
+    // Nothing, and nobody asked. The foundation is right to refuse an empty query: nothing can be
+    // grounded for one. What was wrong was handing it a question that does not exist and then
+    // reporting the refusal as a failure of the run.
+    expect(actualPassages).toEqual([]);
+    verifyNoOtherCalls(knowledgeServiceMock);
+    verifyNoOtherCalls(loggingBrokerMock);
+  });
+
 });
