@@ -96,4 +96,36 @@ describe("PerimeterOrchestrationService requestApproval logic", () => {
     expect(approvalServiceMock.requestApproval).toHaveBeenCalledWith(asking);
   });
 
+
+  it("ShouldAnswerOneActFromADecisionAndAskAgainForTheNextAsync", async () => {
+    // given
+    // The same act proposed twice in one resumed run, which is what a retry looks like from
+    // inside: same tool, same file, a new claim and a new key. The answer that was given was for
+    // the first one.
+    const { approvalServiceMock, perimeterOrchestrationService } = createPerimeterOrchestrationServiceTests();
+    const effect = createRandomEffect();
+    approvalServiceMock.requestApproval.mockResolvedValue("Pending");
+
+    // when
+    const verdicts = await AgentRun.begin(null, undefined, async () => {
+      const run = AgentRun.current();
+
+      if (run !== null) {
+        run.decision = { idempotencyKey: effect.idempotencyKey, decision: "Approved" };
+      }
+
+      const first = await perimeterOrchestrationService.requestApproval(effect);
+      const second = await perimeterOrchestrationService.requestApproval(effect);
+
+      return [first, second];
+    });
+
+    // then
+    // Once. A decision is an answer to one act, not a mood for the rest of the run: an approval
+    // that kept answering would be the "yes to everything" button this window deliberately does
+    // not have, arriving through the back door.
+    expect(verdicts).toEqual(["Approved", "Pending"]);
+    expect(approvalServiceMock.requestApproval).toHaveBeenCalledTimes(1);
+  });
+
 });
