@@ -68,4 +68,32 @@ describe("PerimeterOrchestrationService requestApproval logic", () => {
     verifyNoOtherCalls(approvalServiceMock);
   });
 
+
+  it("ShouldNotLetADecisionForOneActAnswerAnotherAsync", async () => {
+    // given
+    // An answer given for one act, and a different act asking. The two are only ever the same
+    // thing if nobody checks, and what a person approved was a file, a command, a deletion, not
+    // whatever the run happened to propose next.
+    const { approvalServiceMock, perimeterOrchestrationService } = createPerimeterOrchestrationServiceTests();
+    const answered = createRandomEffect();
+    const asking = createRandomEffect();
+    approvalServiceMock.requestApproval.mockResolvedValue("Pending");
+
+    // when
+    const actualVerdict = await AgentRun.begin(null, undefined, async () => {
+      const run = AgentRun.current();
+
+      if (run !== null) {
+        run.decision = { idempotencyKey: answered.idempotencyKey, decision: "Approved" };
+      }
+
+      return await perimeterOrchestrationService.requestApproval(asking);
+    });
+
+    // then
+    // Asked, not assumed. The decision is matched by the key it was given for and this is not it.
+    expect(actualVerdict).toBe("Pending");
+    expect(approvalServiceMock.requestApproval).toHaveBeenCalledWith(asking);
+  });
+
 });
