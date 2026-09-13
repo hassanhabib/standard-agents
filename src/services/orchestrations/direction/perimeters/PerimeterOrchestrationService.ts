@@ -142,10 +142,13 @@ export class PerimeterOrchestrationService {
 // window was closed, the terminal exited, the script moved on. Asking again there is asking
 // nobody, so the answer travels with the request instead.
 //
-function carriedDecisionFor(_effect: AgentEffect): ApprovalVerdict | null {
+// Matched by the key it was given for. An answer given for one act is only ever an answer for
+// another if nobody checks: what a person approved was a file, a command, a deletion, not whatever
+// the run happened to propose next.
+function carriedDecisionFor(effect: AgentEffect): ApprovalVerdict | null {
   const carried = AgentRun.current()?.decision ?? null;
 
-  if (carried === null) {
+  if (carried === null || carried.idempotencyKey !== effect.idempotencyKey) {
     return null;
   }
 
