@@ -14,7 +14,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { StandardAgent, type AgentOutcome, type GeneratorBroker, type Tool } from "standard-agents";
+import { StandardAgent, type AgentOutcome, type GeneratorBroker, type Tool } from "@hassanhabib/standard-agents";
 
 interface Vector {
   readonly name: string;
