@@ -1,6 +1,7 @@
 import type { LoggingBroker } from "../../../../brokers/loggings/LoggingBroker.js";
 import type { TimeBroker } from "../../../../brokers/times/TimeBroker.js";
 import type { EffectRecord } from "../../../../models/brokers/effects/EffectRecord.js";
+import { AgentRun } from "../../../../models/loggings/AgentRun.js";
 import type { AgentEffect } from "../../../../models/orchestrations/effects/AgentEffect.js";
 import type { ApprovalVerdict } from "../../../../models/orchestrations/effects/ApprovalVerdict.js";
 import type { AuthorizationDecision } from "../../../../models/orchestrations/effects/AuthorizationDecision.js";
@@ -88,6 +89,14 @@ export class PerimeterOrchestrationService {
 
   public requestApproval(effect: AgentEffect): Promise<ApprovalVerdict> {
     return this.tryCatch(async () => {
+      const carried = carriedDecisionFor(effect);
+
+      if (carried !== null) {
+        await this.loggingBroker.logProcess("Direction", `Approval -> ${carried.toUpperCase()} '${effect.toolName}' from the resumed request`);
+
+        return carried;
+      }
+
       const approval = await this.approvalService.requestApproval(effect);
 
       if (approval === "Approved") {
@@ -125,4 +134,20 @@ export class PerimeterOrchestrationService {
       prior.leaseUntil.getTime() > this.timeBroker.getCurrentDateTime().getTime()
     );
   }
+}
+
+// The authority's answer, travelling on the request that resumed the run (PLAN.md 2.5).
+//
+// A run that was held is resumed somewhere the person who answered may no longer be sitting: the
+// window was closed, the terminal exited, the script moved on. Asking again there is asking
+// nobody, so the answer travels with the request instead.
+//
+function carriedDecisionFor(_effect: AgentEffect): ApprovalVerdict | null {
+  const carried = AgentRun.current()?.decision ?? null;
+
+  if (carried === null) {
+    return null;
+  }
+
+  return carried.decision === "Approved" ? "Approved" : "Denied";
 }
