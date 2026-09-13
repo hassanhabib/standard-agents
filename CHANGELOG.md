@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `standard-agents` are documented here. The format follows
+All notable changes to `@hassanhabib/standard-agents` are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 

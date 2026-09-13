@@ -1,4 +1,4 @@
-# standard-agents
+# @hassanhabib/standard-agents
 
 A TypeScript implementation of [The Standard for Agents](https://github.com/hassanhabib/The-Standard-Agent-Specs):
 
@@ -16,7 +16,7 @@ Zero runtime dependencies. It imports Node's built-ins and nothing else.
 ## Install
 
 ```
-npm i standard-agents
+npm i @hassanhabib/standard-agents
 ```
 
 Node 20 or later.
@@ -24,7 +24,7 @@ Node 20 or later.
 ## One expression
 
 ```ts
-import { StandardAgent } from "standard-agents";
+import { StandardAgent } from "@hassanhabib/standard-agents";
 
 const agent = new StandardAgent()
   .brain("https://api.example.com/v1/", apiKey, "a-model")
