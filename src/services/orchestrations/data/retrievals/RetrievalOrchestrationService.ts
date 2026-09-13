@@ -63,6 +63,13 @@ export class RetrievalOrchestrationService {
 
   public retrieveGrounding(query: string): Promise<readonly string[]> {
     return this.tryCatch(async () => {
+      // A run that carries an answer to an act it already proposed asks for nothing new, so there
+      // is no question here to look anything up for. The foundation is right to refuse an empty
+      // query, and this is the tier that should not be handing it one.
+      if (query.trim().length === 0) {
+        return [];
+      }
+
       const knowledge = await this.knowledgeService.retrieve(query);
       await this.loggingBroker.logProcess("Data", `Retrieved ${knowledge.length} knowledge matches`);
 

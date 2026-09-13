@@ -1,6 +1,7 @@
 import type { LoggingBroker } from "../../../../brokers/loggings/LoggingBroker.js";
 import type { TimeBroker } from "../../../../brokers/times/TimeBroker.js";
 import type { EffectRecord } from "../../../../models/brokers/effects/EffectRecord.js";
+import { AgentRun } from "../../../../models/loggings/AgentRun.js";
 import type { AgentEffect } from "../../../../models/orchestrations/effects/AgentEffect.js";
 import type { ApprovalVerdict } from "../../../../models/orchestrations/effects/ApprovalVerdict.js";
 import type { AuthorizationDecision } from "../../../../models/orchestrations/effects/AuthorizationDecision.js";
@@ -88,6 +89,14 @@ export class PerimeterOrchestrationService {
 
   public requestApproval(effect: AgentEffect): Promise<ApprovalVerdict> {
     return this.tryCatch(async () => {
+      const carried = carriedDecisionFor(effect);
+
+      if (carried !== null) {
+        await this.loggingBroker.logProcess("Direction", `Approval -> ${carried.toUpperCase()} '${effect.toolName}' from the resumed request`);
+
+        return carried;
+      }
+
       const approval = await this.approvalService.requestApproval(effect);
 
       if (approval === "Approved") {
@@ -125,4 +134,29 @@ export class PerimeterOrchestrationService {
       prior.leaseUntil.getTime() > this.timeBroker.getCurrentDateTime().getTime()
     );
   }
+}
+
+// The authority's answer, travelling on the request that resumed the run (PLAN.md 2.5).
+//
+// A run that was held is resumed somewhere the person who answered may no longer be sitting: the
+// window was closed, the terminal exited, the script moved on. Asking again there is asking
+// nobody, so the answer travels with the request instead.
+//
+// Matched by the key it was given for. An answer given for one act is only ever an answer for
+// another if nobody checks: what a person approved was a file, a command, a deletion, not whatever
+// the run happened to propose next.
+// And consumed once. A decision is an answer to one act, not a mood for the rest of the run: an
+// approval that kept answering would be the "yes to everything" button this client deliberately
+// does not have, arriving through the back door.
+function carriedDecisionFor(effect: AgentEffect): ApprovalVerdict | null {
+  const run = AgentRun.current();
+  const carried = run?.decision ?? null;
+
+  if (run === null || carried === null || carried.idempotencyKey !== effect.idempotencyKey) {
+    return null;
+  }
+
+  run.decision = null;
+
+  return carried.decision === "Approved" ? "Approved" : "Denied";
 }

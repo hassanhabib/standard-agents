@@ -88,7 +88,7 @@ export class RunManagementService {
     streaming: boolean,
     signal: AbortSignal | undefined,
   ): Promise<AgentOutcome> {
-    validatePrompt(request.prompt);
+    validatePrompt(request.prompt, request.decision !== null);
 
     // Read before the run begins: a session that never delivered an answer was interrupted, and
     // the next prompt in it continues that run rather than starting a fresh one.
