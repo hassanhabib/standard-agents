@@ -38,6 +38,13 @@ export class GuardianOrchestrationService {
   // The verdict is remembered on the run, not in this service, so the run ending evicts it.
   public screen(prompt: string): Promise<string> {
     return this.tryCatch(async () => {
+      // Nothing to screen. A run that carries an answer to an act it already proposed asks for
+      // nothing new, and a guardian asked about nothing has nothing to judge: the foundation says
+      // so by refusing, and this is the tier that should not be asking.
+      if (prompt.trim().length === 0) {
+        return "Allow";
+      }
+
       const run = AgentRun.current();
 
       if (run === null) {
