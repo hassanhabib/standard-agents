@@ -13,4 +13,13 @@ export interface AgentTurn {
   // time it was, and a window that refused to draw it would be losing somebody's history to a
   // schema change.
   readonly recordedOn?: string;
+
+  // Which run produced this turn. The session carries the run it last was, which is one run for a
+  // conversation with twenty turns in it, so anything keeping what a run did to the folder could be
+  // offered for the most recent turn and for no other.
+  //
+  // Optional for the same reason `recordedOn` is: every turn recorded before this field existed is
+  // still in somebody's store and still has to read back. A turn that does not know its run is a
+  // turn nothing can be offered for, which is where all of them were.
+  readonly runId?: string;
 }

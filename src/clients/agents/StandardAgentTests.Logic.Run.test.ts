@@ -178,7 +178,13 @@ describe("StandardAgent run logic", () => {
     expect(actualOutcome.status).toBe("Responded");
     const recordedSession = await sessionBroker.selectSession(sessionId);
     expect(recordedSession?.history).toEqual([
-      { prompt, answer: "42", exchanges: [], recordedOn: expect.any(String) as unknown as string },
+      {
+        prompt,
+        answer: "42",
+        exchanges: [],
+        recordedOn: expect.any(String) as unknown as string,
+        runId: expect.any(String) as unknown as string,
+      },
     ]);
     expect(recordedSession?.status).toBe("Responded");
     expect(recordedSession?.version).toBe(2);
