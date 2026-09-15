@@ -4,6 +4,17 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.2.0]
+
+### Sessions
+
+- `AgentTurn` carries `runId`: which run produced that turn. The session already
+  carried the run it last was, which is one run for a conversation with twenty
+  turns in it, so anything keeping what a run did could be offered for the most
+  recent turn and for no other. Optional, for the reason `recordedOn` is
+  optional: every turn recorded before this field existed is still in somebody's
+  store and still has to read back.
+
 ## [0.1.0]
 
 The first release as a library of its own. The implementation was written and
