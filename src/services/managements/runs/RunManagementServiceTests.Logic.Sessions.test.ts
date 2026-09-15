@@ -94,6 +94,39 @@ describe("RunManagementService sessions logic", () => {
     expect(recorded.history[0]?.recordedOn).toBe("2026-09-13T09:41:00.000Z");
   });
 
+  // Which run a turn was, kept on the turn (SPEC.md 3.2).
+  //
+  // The session already remembers the run it last was, which is one run for a conversation with
+  // twenty turns in it. Anything that kept what a run did to the folder could therefore be offered
+  // for the most recent turn and for no other: a person who scrolled up to the turn that rewrote a
+  // file had no way to see what it did, and no way to put it back, while the files it wrote were
+  // still sitting in the snapshot store with nothing pointing at them.
+  it("ShouldRecordWhichRunEachTurnWasAsync", async () => {
+    // given
+    const { dataCoordinationServiceMock, decisionCoordinationServiceMock, directionCoordinationServiceMock, runManagementService } =
+      createRunManagementServiceTests();
+
+    const sessionId = createRandomString();
+    const answer = createRandomString();
+    dataCoordinationServiceMock.retrieveRemoteTools.mockResolvedValue([]);
+    dataCoordinationServiceMock.recallSession.mockResolvedValue(null);
+    dataCoordinationServiceMock.recordSession.mockResolvedValue(undefined);
+    dataCoordinationServiceMock.recall.mockImplementation(async (context) => recalled(context));
+    decisionCoordinationServiceMock.think.mockImplementation(async (context) => thoughtAnswer(context, answer));
+    directionCoordinationServiceMock.act.mockImplementation(async (context) => actedResponse(context));
+
+    // when
+    await runManagementService.run(createPromptRequest(createRandomString(), sessionId));
+
+    // then
+    // The same run the session is stamped with, on the turn that run produced. The session's own
+    // stamp is overwritten by the next prompt; the turn's is not, which is the whole point.
+    const recorded = dataCoordinationServiceMock.recordSession.mock.calls[1]?.[0] as AgentSession;
+
+    expect(recorded.history[0]?.runId).toBe(recorded.runId);
+    expect(recorded.history[0]?.runId).not.toBe("");
+  });
+
   it("ShouldLoadABoundedHistoryFromTheSessionAsync", async () => {
     // given
     const { dataCoordinationServiceMock, decisionCoordinationServiceMock, directionCoordinationServiceMock, loggingBrokerMock, runManagementService } =
