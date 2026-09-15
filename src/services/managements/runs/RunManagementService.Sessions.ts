@@ -112,11 +112,15 @@ export async function saveSession(
       // a test place a turn at a particular moment. A turn that does not know when it happened is
       // a turn a person cannot find their way back to: the store orders conversations by the day
       // in their name, and nothing inside one is ordered at all.
+      // And which run it was. The stamp below is overwritten by the next prompt, so a conversation
+      // with twenty turns in it remembers one run; the turn's own stamp is what lets anything that
+      // kept a run's work be offered for the turn that did it rather than only the last one.
       {
         prompt: context.prompt,
         answer: context.result,
         exchanges: context.toolExchanges,
         recordedOn: timeBroker.getCurrentDateTime().toISOString(),
+        runId: AgentRun.current()?.id ?? "",
       },
     ],
     status: context.status,

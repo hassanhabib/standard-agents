@@ -49,9 +49,18 @@ describe("RunManagementService sessions logic", () => {
 
     expect(dataCoordinationServiceMock.recordSession).toHaveBeenNthCalledWith(2, {
       id: sessionId,
-      // The moment it was written has a test of its own below; here it is only asserted to be
-      // there, because this test is about the shape of the two writes and not about the clock.
-      history: [{ prompt, answer, exchanges: [], recordedOn: expect.any(String) as unknown as string }],
+      // The moment it was written, and which run wrote it, each have a test of their own below;
+      // here they are only asserted to be there, because this test is about the shape of the two
+      // writes and not about the clock or the run.
+      history: [
+        {
+          prompt,
+          answer,
+          exchanges: [],
+          recordedOn: expect.any(String) as unknown as string,
+          runId: expect.any(String) as unknown as string,
+        },
+      ],
       status: "Responded",
       pendingQuestion: "",
       pendingEffect: null,
