@@ -22,4 +22,13 @@ export interface AgentTurn {
   // still in somebody's store and still has to read back. A turn that does not know its run is a
   // turn nothing can be offered for, which is where all of them were.
   readonly runId?: string;
+
+  // How long the turn took, in milliseconds, from the moment its run began to the moment it was
+  // written. The difference between an answer that came back in two seconds and one that took four
+  // minutes is most of what somebody wants to know coming back to a conversation, and only the run
+  // can record it: by the time anybody reads the turn, both moments are gone.
+  //
+  // Optional for the same reason the two above are: every turn recorded before this field existed
+  // is still in somebody's store and still has to read back.
+  readonly tookMs?: number;
 }

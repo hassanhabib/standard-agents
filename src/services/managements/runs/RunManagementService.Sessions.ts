@@ -96,12 +96,20 @@ export async function saveSession(
   timeBroker: TimeBroker,
   context: AgentContext,
   principal: string,
+
+  // When the run began, so the turn can say how long it took. Handed in rather than read here,
+  // because by the time this runs the only moment left is the one it is writing.
+  began: Date,
 ): Promise<void> {
   if (context.sessionId.length === 0) {
     return;
   }
 
   const isWaiting = context.status === "AwaitingInput" || context.status === "AwaitingApproval";
+
+  // Read once, because the turn is stamped with it and measured against it, and a clock read twice
+  // is two different moments: the turn would say it was written a fraction after it finished.
+  const written = timeBroker.getCurrentDateTime();
 
   await recordSessionWithRetry(dataCoordinationService, loggingBroker, context.sessionId, principal, (existing) => ({
     id: context.sessionId,
@@ -115,12 +123,17 @@ export async function saveSession(
       // And which run it was. The stamp below is overwritten by the next prompt, so a conversation
       // with twenty turns in it remembers one run; the turn's own stamp is what lets anything that
       // kept a run's work be offered for the turn that did it rather than only the last one.
+      // And how long it took, from the moment the run began to this one. The difference between an
+      // answer that came back in two seconds and one that took four minutes is most of what
+      // somebody wants to know coming back to a conversation, and by the time anybody reads the
+      // turn both of those moments are gone.
       {
         prompt: context.prompt,
         answer: context.result,
         exchanges: context.toolExchanges,
-        recordedOn: timeBroker.getCurrentDateTime().toISOString(),
+        recordedOn: written.toISOString(),
         runId: AgentRun.current()?.id ?? "",
+        tookMs: Math.max(0, written.getTime() - began.getTime()),
       },
     ],
     status: context.status,
