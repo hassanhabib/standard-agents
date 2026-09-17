@@ -97,6 +97,13 @@ export class RunManagementService {
     // This prompt's run (SPEC.md 4.4): one instance serves prompts concurrently, and each
     // invocation establishes its own identity, so everything recorded below is credited to it.
     return await AgentRun.begin(resumedRunId(session), signal, async () => {
+      // When this run began, for the turn it will write. Taken at the top rather than beside the
+      // budget's own stamp further down: what somebody means by how long a turn took is everything
+      // between asking and being answered, and the work before the first turn is part of that.
+      //
+      // From the clock the run was given, like every other moment this service records, because a
+      // service that read the wall clock is a service no test can place at a particular moment.
+      const began = this.timeBroker.getCurrentDateTime();
       const run = AgentRun.current();
 
       if (run !== null) {
@@ -248,7 +255,7 @@ export class RunManagementService {
       }
 
       // Appended before the run ends, so the next prompt sees it (SPEC.md 4.11).
-      await saveSession(this.dataCoordinationService, this.loggingBroker, this.timeBroker, context, this.currentPrincipal());
+      await saveSession(this.dataCoordinationService, this.loggingBroker, this.timeBroker, context, this.currentPrincipal(), began);
 
       // The pending effect rides the outcome as well as the session: a stateless deployment has
       // no session, and an exposer that cannot reach the pending call cannot yield it.

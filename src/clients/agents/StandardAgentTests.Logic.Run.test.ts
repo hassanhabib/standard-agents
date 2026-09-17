@@ -184,6 +184,7 @@ describe("StandardAgent run logic", () => {
         exchanges: [],
         recordedOn: expect.any(String) as unknown as string,
         runId: expect.any(String) as unknown as string,
+        tookMs: expect.any(Number) as unknown as number,
       },
     ]);
     expect(recordedSession?.status).toBe("Responded");

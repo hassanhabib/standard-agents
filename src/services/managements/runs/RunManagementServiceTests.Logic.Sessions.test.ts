@@ -59,6 +59,7 @@ describe("RunManagementService sessions logic", () => {
           exchanges: [],
           recordedOn: expect.any(String) as unknown as string,
           runId: expect.any(String) as unknown as string,
+          tookMs: expect.any(Number) as unknown as number,
         },
       ],
       status: "Responded",
@@ -134,6 +135,49 @@ describe("RunManagementService sessions logic", () => {
 
     expect(recorded.history[0]?.runId).toBe(recorded.runId);
     expect(recorded.history[0]?.runId).not.toBe("");
+  });
+
+  // How long the turn took, kept on the turn (SPEC.md 3.2).
+  //
+  // A turn carries when it was written and nothing about how long it took to write. The difference
+  // between an answer that came back in two seconds and one that took four minutes is the whole of
+  // what somebody wants to know when they come back to a conversation, and it is a fact only the
+  // run itself is in a position to record: by the time anybody reads the turn, both moments are
+  // gone.
+  it("ShouldRecordHowLongTheTurnTookAsync", async () => {
+    // given
+    // A clock that moves, because a duration measured against a clock that does not is nought
+    // however long the turn really was.
+    const clock = { now: new Date("2026-09-13T09:41:00.000Z") };
+
+    const { dataCoordinationServiceMock, decisionCoordinationServiceMock, directionCoordinationServiceMock, runManagementService } =
+      createRunManagementServiceTests({}, clock);
+
+    const sessionId = createRandomString();
+    const answer = createRandomString();
+    dataCoordinationServiceMock.retrieveRemoteTools.mockResolvedValue([]);
+    dataCoordinationServiceMock.recallSession.mockResolvedValue(null);
+    dataCoordinationServiceMock.recordSession.mockResolvedValue(undefined);
+    dataCoordinationServiceMock.recall.mockImplementation(async (context) => recalled(context));
+
+    // Thinking is what takes the time in nearly every turn there is.
+    decisionCoordinationServiceMock.think.mockImplementation(async (context) => {
+      clock.now = new Date("2026-09-13T09:41:12.500Z");
+
+      return thoughtAnswer(context, answer);
+    });
+
+    directionCoordinationServiceMock.act.mockImplementation(async (context) => actedResponse(context));
+
+    // when
+    await runManagementService.run(createPromptRequest(createRandomString(), sessionId));
+
+    // then
+    // From the moment the run began to the moment its turn was written, in milliseconds, measured
+    // on the clock the run was given rather than the one on the wall.
+    const recorded = dataCoordinationServiceMock.recordSession.mock.calls[1]?.[0] as AgentSession;
+
+    expect(recorded.history[0]?.tookMs).toBe(12_500);
   });
 
   it("ShouldLoadABoundedHistoryFromTheSessionAsync", async () => {

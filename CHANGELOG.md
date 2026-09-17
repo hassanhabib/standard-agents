@@ -4,6 +4,22 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.3.0]
+
+### Sessions
+
+- `AgentTurn` carries `tookMs`: how long the turn took, from the moment its run began to the moment
+  it was written. A turn said when it happened and nothing about how long it took, and the
+  difference between an answer that came back in two seconds and one that took four minutes is most
+  of what somebody wants to know coming back to a conversation. Only the run can record it: by the
+  time anybody reads the turn, both of those moments are gone.
+- Measured from the top of the run rather than from the first turn of the loop, because what
+  somebody means by how long a turn took is everything between asking and being answered. On the
+  clock the run was given, like every other moment the loop records, and read once rather than
+  twice: read twice, a turn would say it was written a fraction after it finished.
+- Optional, like the two fields beside it, so every turn recorded before it existed still reads
+  back.
+
 ## [0.2.0]
 
 ### Sessions
