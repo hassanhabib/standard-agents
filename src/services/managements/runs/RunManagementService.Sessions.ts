@@ -134,6 +134,12 @@ export async function saveSession(
         recordedOn: written.toISOString(),
         runId: AgentRun.current()?.id ?? "",
         tookMs: Math.max(0, written.getTime() - began.getTime()),
+
+        // And which of the two registers it was. Observed rather than declared: a turn that
+        // reached for a tool did work, and a turn that did not answered from what it already had.
+        // Asking the model to tell us as well would be asking it to repeat something it has just
+        // demonstrated, and giving it a second chance to disagree with itself.
+        acted: context.toolExchanges.length > 0,
       },
     ],
     status: context.status,

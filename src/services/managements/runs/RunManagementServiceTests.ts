@@ -108,7 +108,20 @@ export function actedResponse(context: AgentContext): AgentContext {
 }
 
 export function actedTool(context: AgentContext, output: string): AgentContext {
-  return { ...context, result: output, observations: [...context.observations, `${context.directionType}: ${output}`], status: "Working" };
+  return {
+    ...context,
+    result: output,
+    observations: [...context.observations, `${context.directionType}: ${output}`],
+
+    // The call and its answer, the way the direction coordination records them. A fake that
+    // observed the output and kept no exchange could not model a turn that did work at all: every
+    // turn it produced looked, from the outside, exactly like a turn that answered from memory.
+    toolExchanges: [
+      ...context.toolExchanges,
+      { callId: `call-${String(context.toolExchanges.length + 1)}`, toolName: context.directionType, argumentsJson: context.payload, result: output },
+    ],
+    status: "Working",
+  };
 }
 
 export function createRandomSession(overrides: Partial<AgentSession> = {}): AgentSession {

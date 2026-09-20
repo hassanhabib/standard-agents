@@ -60,6 +60,10 @@ describe("RunManagementService sessions logic", () => {
           recordedOn: expect.any(String) as unknown as string,
           runId: expect.any(String) as unknown as string,
           tookMs: expect.any(Number) as unknown as number,
+
+          // Which of the two registers the turn was. This one answered without reaching for
+          // anything, which has its own test below; here it is part of the shape.
+          acted: false,
         },
       ],
       status: "Responded",
