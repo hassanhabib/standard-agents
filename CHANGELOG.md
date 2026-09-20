@@ -4,6 +4,18 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.5.0]
+
+### Decision
+
+- A brain that could not be reached raises `UnreachableBrainException` instead of carrying fetch's
+  own `TypeError` up the chain. Nothing answering is an ordinary thing to happen: a Host that is
+  not running yet, a port that is not the one it serves on, a machine that went to sleep. What
+  reached the person waiting was "fetch failed", which names a browser API and nothing they own.
+- Localised where the fault is recognised, once, so every tier above it wraps a sentence somebody
+  can act on: the address, and whatever is meant to be listening at it, are the two things worth
+  looking at.
+
 ## [0.4.0]
 
 ### Sessions
