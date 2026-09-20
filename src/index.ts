@@ -111,6 +111,7 @@ export { SkillServiceException } from "./models/foundations/skills/exceptions/Sk
 // Foundations: Decision (SPEC.md 4.2).
 export { BrainService } from "./services/foundations/brains/BrainService.js";
 export { InvalidBrainException } from "./models/foundations/brains/exceptions/InvalidBrainException.js";
+export { UnreachableBrainException } from "./models/foundations/brains/exceptions/UnreachableBrainException.js";
 export { FailedBrainDependencyException } from "./models/foundations/brains/exceptions/FailedBrainDependencyException.js";
 export { FailedBrainServiceException } from "./models/foundations/brains/exceptions/FailedBrainServiceException.js";
 export { BrainValidationException } from "./models/foundations/brains/exceptions/BrainValidationException.js";
