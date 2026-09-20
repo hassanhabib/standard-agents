@@ -7,6 +7,7 @@ import { BrainServiceException } from "../../../models/foundations/brains/except
 import { FailedBrainDependencyException } from "../../../models/foundations/brains/exceptions/FailedBrainDependencyException.js";
 import { FailedBrainServiceException } from "../../../models/foundations/brains/exceptions/FailedBrainServiceException.js";
 import { InvalidBrainException } from "../../../models/foundations/brains/exceptions/InvalidBrainException.js";
+import { UnreachableBrainException } from "../../../models/foundations/brains/exceptions/UnreachableBrainException.js";
 import { createBrainServiceTests, createRandomString, expectSameExceptionAs, verifyNoOtherCalls } from "./BrainServiceTests.js";
 
 describe("BrainService generate exceptions", () => {
@@ -76,14 +77,23 @@ describe("BrainService generate exceptions", () => {
     },
   );
 
+  // Localised rather than carried. What fetch says when it could not get a response at all is
+  // "fetch failed", and that sentence rises through every tier above this one to whoever is
+  // waiting, who is told the name of a browser API and nothing they can act on. The library knows
+  // what it means and says it here, once, where the fault is recognised.
   it("ShouldThrowCriticalDependencyExceptionOnGenerateIfHttpRequestErrorOccursAndLogItAsync", async () => {
     // given
     const { generatorBrokerMock, loggingBrokerMock, brainService } = createBrainServiceTests();
     const httpRequestException = new TypeError("fetch failed");
 
+    const unreachableBrainException = new UnreachableBrainException(
+      "nothing answered at that address. Check that it is right and that the service is running.",
+      httpRequestException,
+    );
+
     const failedBrainDependencyException = new FailedBrainDependencyException(
       "Failed brain dependency error occurred, contact support.",
-      httpRequestException,
+      unreachableBrainException,
     );
 
     const expectedBrainDependencyException = new BrainDependencyException(

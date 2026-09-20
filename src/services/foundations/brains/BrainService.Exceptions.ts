@@ -7,6 +7,7 @@ import { BrainValidationException } from "../../../models/foundations/brains/exc
 import { FailedBrainDependencyException } from "../../../models/foundations/brains/exceptions/FailedBrainDependencyException.js";
 import { FailedBrainServiceException } from "../../../models/foundations/brains/exceptions/FailedBrainServiceException.js";
 import { InvalidBrainException } from "../../../models/foundations/brains/exceptions/InvalidBrainException.js";
+import { UnreachableBrainException } from "../../../models/foundations/brains/exceptions/UnreachableBrainException.js";
 
 // The exception partial (SPEC-cli 3.1): the brain family's categories, each localising the
 // native fault beneath it and logging at the severity the category carries. A refused key, a
@@ -42,8 +43,19 @@ export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
         throw await createAndLogCriticalDependencyException(loggingBroker, error);
       }
 
+      // Nothing answered at all, which is what fetch raises a TypeError for. Localised here rather
+      // than carried up: "fetch failed" is the name of a browser API failing, and it rises through
+      // every tier above this one to whoever is waiting, who is left with a sentence naming
+      // nothing they own and nothing they can do. The address, and whatever is meant to be
+      // listening at it, are the two things worth looking at.
       if (error instanceof TypeError) {
-        throw await createAndLogCriticalDependencyException(loggingBroker, error);
+        throw await createAndLogCriticalDependencyException(
+          loggingBroker,
+          new UnreachableBrainException(
+            "nothing answered at that address. Check that it is right and that the service is running.",
+            error,
+          ),
+        );
       }
 
       if (error instanceof HttpResponseException) {
