@@ -4,6 +4,21 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.4.0]
+
+### Sessions
+
+- `AgentTurn` carries `acted`: whether that turn reached for anything, or answered out of what it
+  already had. The loop is the only place that knows: by the time anybody reads the turn back, the
+  exchanges are on it and working out what they meant is a question every reader would have to
+  answer again, the same way, and one of them would answer it differently.
+- Recorded, and nothing more. The framework says what a turn did; it does not tell a model when to
+  reach and when to answer, because the words that decide that belong to whoever is writing the
+  skill, in their own product's voice. A framework that shipped those words would be putting its
+  own sentences in somebody else's agent's mouth.
+- Optional, like the three fields beside it, so every turn recorded before it existed still reads
+  back.
+
 ## [0.3.0]
 
 ### Sessions
