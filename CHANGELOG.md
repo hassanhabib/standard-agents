@@ -4,6 +4,18 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.6.0]
+
+### Decision
+
+- `UnreachableBrainException` is the last word in the chain rather than a sentence with fetch's own
+  `TypeError` hanging off the end of it. A door showing somebody what happened reads the bottom of
+  the chain, because every tier above it is a category written for a log, so a native fault left in
+  place at the bottom is what they are shown and the sentence above it is one nobody sees. Measured
+  at a dead address before and after: "fetch failed", then the sentence.
+- The fault itself is kept where the people who need it will look: as the exception's cause, and in
+  the data beside it.
+
 ## [0.5.0]
 
 ### Decision

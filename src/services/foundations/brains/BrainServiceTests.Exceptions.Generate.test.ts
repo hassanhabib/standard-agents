@@ -112,6 +112,14 @@ describe("BrainService generate exceptions", () => {
     expect(actualException).toBeInstanceOf(BrainDependencyException);
     expectSameExceptionAs(actualException, expectedBrainDependencyException);
     expectSameExceptionAs(loggingBrokerMock.logCritical.mock.calls[0]?.[0], expectedBrainDependencyException);
+
+    // The last word, because that is the one a door reads. Every tier above this wraps a category
+    // written for a log, so whoever is waiting is shown the bottom of the chain: if the native
+    // fault is still hanging off the end of it, the sentence above is a sentence nobody sees.
+    expect(innermostMessageOf(actualException)).toBe(
+      "nothing answered at that address. Check that it is right and that the service is running.",
+    );
+
     verifyNoOtherCalls(generatorBrokerMock, { generate: 1 });
     verifyNoOtherCalls(loggingBrokerMock, { logCritical: 1 });
   });
@@ -180,3 +188,16 @@ describe("BrainService generate exceptions", () => {
   });
 
 });
+
+// The same walk a door does: every tier wraps the one below it, and what a person is shown is the
+// bottom of the chain, because the tiers above it are categories written for a log.
+function innermostMessageOf(error: unknown): string {
+  let said = "";
+
+  for (let at = error as { message?: string; innerError?: unknown } | null | undefined; at !== null && at !== undefined; ) {
+    said = (at.message ?? "").trim() || said;
+    at = at.innerError as { message?: string; innerError?: unknown } | null | undefined;
+  }
+
+  return said;
+}
