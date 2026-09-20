@@ -7,7 +7,7 @@ import { StaleSessionException } from "../../../models/foundations/sessions/exce
 import { AgentOrchestrationDependencyValidationException } from "../../../models/orchestrations/agents/exceptions/AgentOrchestrationDependencyValidationException.js";
 import { AgentCoordinationValidationException } from "../../../models/coordinations/agents/exceptions/AgentCoordinationValidationException.js";
 import { InvalidAgentException } from "../../../models/coordinations/agents/exceptions/InvalidAgentException.js";
-import { actedResponse, createRandomSession, createRandomString, createRunManagementServiceTests, expectSameExceptionAs, recalled, thoughtAnswer, verifyNoOtherCalls } from "./RunManagementServiceTests.js";
+import { actedResponse, actedTool, createRandomSession, createRandomString, createRunManagementServiceTests, expectSameExceptionAs, recalled, thoughtAnswer, thoughtTool, verifyNoOtherCalls } from "./RunManagementServiceTests.js";
 
 describe("RunManagementService sessions logic", () => {
   it("ShouldCheckpointAndRecordTheSessionAsync", async () => {
@@ -60,6 +60,10 @@ describe("RunManagementService sessions logic", () => {
           recordedOn: expect.any(String) as unknown as string,
           runId: expect.any(String) as unknown as string,
           tookMs: expect.any(Number) as unknown as number,
+
+          // Which of the two registers the turn was. This one answered without reaching for
+          // anything, which has its own test below; here it is part of the shape.
+          acted: false,
         },
       ],
       status: "Responded",
@@ -250,6 +254,67 @@ describe("RunManagementService sessions logic", () => {
     expectSameExceptionAs(loggingBrokerMock.logError.mock.calls[0]?.[0], expectedAgentCoordinationValidationException);
     verifyNoOtherCalls(dataCoordinationServiceMock, { recallSession: 1 });
     verifyNoOtherCalls(decisionCoordinationServiceMock);
+  });
+
+  it("ShouldSayWhetherTheTurnActedAsync", async () => {
+    // given
+    // Two turns of the same conversation: one that answered from what it already had, and one that
+    // reached for a tool. The difference between them is the difference between talking to
+    // somebody and asking them to do something, and until now nothing carried it: every consumer
+    // worked it out again from the exchanges, each with its own rule.
+    const { dataCoordinationServiceMock, decisionCoordinationServiceMock, directionCoordinationServiceMock, runManagementService } =
+      createRunManagementServiceTests();
+
+    dataCoordinationServiceMock.retrieveRemoteTools.mockResolvedValue([]);
+    dataCoordinationServiceMock.recallSession.mockResolvedValue(null);
+    dataCoordinationServiceMock.recordSession.mockResolvedValue(undefined);
+    dataCoordinationServiceMock.recall.mockImplementation(async (context) => recalled(context));
+    decisionCoordinationServiceMock.think.mockImplementation(async (context) => thoughtAnswer(context, "Hello."));
+    directionCoordinationServiceMock.act.mockImplementation(async (context) => actedResponse(context));
+
+    // when
+    await runManagementService.run(createPromptRequest("hi there", createRandomString()));
+
+    // then
+    // Nothing was touched, so the turn says so. This is the shape of a greeting.
+    const talked = dataCoordinationServiceMock.recordSession.mock.calls[1]?.[0] as AgentSession;
+
+    expect(talked.history[0]?.acted).toBe(false);
+  });
+
+  it("ShouldSayTheTurnActedWhenItReachedForSomethingAsync", async () => {
+    // given
+    const { dataCoordinationServiceMock, decisionCoordinationServiceMock, directionCoordinationServiceMock, runManagementService } =
+      createRunManagementServiceTests();
+
+    let asked = false;
+    dataCoordinationServiceMock.retrieveRemoteTools.mockResolvedValue([]);
+    dataCoordinationServiceMock.recallSession.mockResolvedValue(null);
+    dataCoordinationServiceMock.recordSession.mockResolvedValue(undefined);
+    dataCoordinationServiceMock.recall.mockImplementation(async (context) => recalled(context));
+
+    // One tool call, and then an answer: the ordinary shape of work.
+    decisionCoordinationServiceMock.think.mockImplementation(async (context) => {
+      if (asked) {
+        return thoughtAnswer(context, "Done.");
+      }
+
+      asked = true;
+
+      return thoughtTool(context, "read_file", "index.html");
+    });
+
+    directionCoordinationServiceMock.act.mockImplementation(async (context) =>
+      context.directionType === "ReturnResponse" ? actedResponse(context) : actedTool(context, "<!doctype html>"),
+    );
+
+    // when
+    await runManagementService.run(createPromptRequest("what does the page say", createRandomString()));
+
+    // then
+    const worked = dataCoordinationServiceMock.recordSession.mock.calls[1]?.[0] as AgentSession;
+
+    expect(worked.history[0]?.acted).toBe(true);
   });
 
   it("ShouldResumeTheInterruptedRunOfTheSessionAsync", async () => {

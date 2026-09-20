@@ -185,6 +185,10 @@ describe("StandardAgent run logic", () => {
         recordedOn: expect.any(String) as unknown as string,
         runId: expect.any(String) as unknown as string,
         tookMs: expect.any(Number) as unknown as number,
+
+        // Answered without reaching for anything, which is what this agent has: a brain and no
+        // tools at all.
+        acted: false,
       },
     ]);
     expect(recordedSession?.status).toBe("Responded");

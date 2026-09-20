@@ -31,4 +31,19 @@ export interface AgentTurn {
   // Optional for the same reason the two above are: every turn recorded before this field existed
   // is still in somebody's store and still has to read back.
   readonly tookMs?: number;
+
+  // Whether this turn reached for anything, or answered from what it already had.
+  //
+  // The two registers of a conversation with an agent: somebody saying hello, and somebody asking
+  // for work. A composition with tools treated every prompt as the second, which is why a greeting
+  // came back as a survey of the workspace, and why every other product in this field asks people
+  // to pick a tab first.
+  //
+  // Recorded rather than worked out again by everyone who reads a turn. It was already derivable
+  // from the exchanges, and that is the problem: three consumers deriving it is three rules that
+  // can disagree, and one of them is the orchestrator deciding where the next prompt goes.
+  //
+  // Optional for the same reason the three above are: every turn recorded before this field
+  // existed is still in somebody's store and still has to read back.
+  readonly acted?: boolean;
 }
