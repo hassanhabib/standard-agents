@@ -107,6 +107,16 @@ export function actedResponse(context: AgentContext): AgentContext {
   return { ...context, result: context.payload, status: "Responded" };
 }
 
+// The same call answered from the ledger rather than performed, the way the direction coordination
+// records a replay: the exchange says so, because a loop counting a run's asks has to tell a
+// replay from a call that ran.
+export function actedReplay(context: AgentContext, output: string): AgentContext {
+  const acted = actedTool(context, output);
+  const last = acted.toolExchanges.at(-1);
+
+  return last === undefined ? acted : { ...acted, toolExchanges: [...acted.toolExchanges.slice(0, -1), { ...last, replayed: true }] };
+}
+
 export function actedTool(context: AgentContext, output: string): AgentContext {
   return {
     ...context,
