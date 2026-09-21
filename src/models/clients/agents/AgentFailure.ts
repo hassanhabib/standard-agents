@@ -5,6 +5,7 @@ export type AgentFailureCode =
   | "cancelled"
   | "budget_exhausted"
   | "turns_exhausted"
+  | "going_in_circles"
   | "content_filter"
   | "dependency";
 

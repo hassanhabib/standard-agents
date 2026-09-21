@@ -13,7 +13,21 @@ import { createAgentContext, type AgentContext } from "../../../models/orchestra
 import type { DataCoordinationService } from "../../coordinations/data/DataCoordinationService.js";
 import type { DecisionCoordinationService } from "../../coordinations/decision/DecisionCoordinationService.js";
 import type { DirectionCoordinationService } from "../../coordinations/direction/DirectionCoordinationService.js";
-import { CANCELLED_MESSAGE, exhaustion, type AgentSpend } from "./RunManagementService.Budgets.js";
+import type { AgentFailureCode } from "../../../models/clients/agents/AgentFailure.js";
+import { CANCELLED_MESSAGE, CIRCLES_MESSAGE, exhaustion, goingInCircles, type AgentSpend } from "./RunManagementService.Budgets.js";
+
+// Which kind of stop it was, for the caller that switches on codes rather than reading sentences.
+function failureCodeFor(stoppedBecause: string, identicalCallLimit: number): AgentFailureCode {
+  if (stoppedBecause === CANCELLED_MESSAGE) {
+    return "cancelled";
+  }
+
+  if (stoppedBecause === CIRCLES_MESSAGE(identicalCallLimit)) {
+    return "going_in_circles";
+  }
+
+  return "budget_exhausted";
+}
 import { createTryCatch, type TryCatch } from "./RunManagementService.Exceptions.js";
 import { createLiveNarrator, voiceNarration, voiceObservedNarration } from "./RunManagementService.Narration.js";
 import { screened } from "./RunManagementService.Screening.js";
@@ -191,6 +205,14 @@ export class RunManagementService {
           await emit({ type: "Tool", content: `${context.directionType}: ${context.result}` });
         }
 
+        // The same act, asked for as many times as the deployment allows, ends the run here. The
+        // perimeter has already answered it with a replay, a note, and the note alone; a model
+        // still asking is going in circles, and every turn it is given from here is the same turn.
+        if (context.status === "Working" && goingInCircles(context.toolExchanges, this.options.identicalCallLimit)) {
+          stoppedBecause = CIRCLES_MESSAGE(this.options.identicalCallLimit);
+          break;
+        }
+
         // A held act is announced before its message: the Status event says what happened for
         // a consumer that switches on kinds, and the Response carries the same words the
         // batched caller receives.
@@ -220,7 +242,7 @@ export class RunManagementService {
           pendingEffect: null,
           failure: {
             category: "Service",
-            code: stoppedBecause === CANCELLED_MESSAGE ? "cancelled" : "budget_exhausted",
+            code: failureCodeFor(stoppedBecause, this.options.identicalCallLimit),
             message: stoppedBecause,
           },
         };

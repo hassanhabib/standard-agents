@@ -329,7 +329,7 @@ export { AgentCoordinationDependencyValidationException } from "./models/coordin
 export { AgentCoordinationDependencyException } from "./models/coordinations/agents/exceptions/AgentCoordinationDependencyException.js";
 export { AgentCoordinationServiceException } from "./models/coordinations/agents/exceptions/AgentCoordinationServiceException.js";
 export type { RunOptions } from "./models/managements/runs/RunOptions.js";
-export { createRunOptions, DEFAULT_MAX_TURNS, DEFAULT_MAX_HISTORY_TURNS } from "./models/managements/runs/RunOptions.js";
+export { createRunOptions, DEFAULT_IDENTICAL_CALL_LIMIT, DEFAULT_MAX_TURNS, DEFAULT_MAX_HISTORY_TURNS } from "./models/managements/runs/RunOptions.js";
 export { FailedRunManagementServiceException } from "./models/managements/runs/exceptions/FailedRunManagementServiceException.js";
 export { RunManagementServiceException } from "./models/managements/runs/exceptions/RunManagementServiceException.js";
 export type { SanitizedProviderOptions } from "./models/brokers/generators/ProviderOptions.js";

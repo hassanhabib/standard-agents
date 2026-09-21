@@ -310,6 +310,15 @@ export class StandardAgent {
     });
   }
 
+  // How many times a run may ask for the same act before the loop ends it. A deployment that
+  // gives a run sixty-four turns is giving a model going in circles sixty turns of the same
+  // question; this is where it says how many is enough.
+  public identicalCallLimit(times: number): this {
+    return this.set((configuration) => {
+      configuration.identicalCallLimit = times;
+    });
+  }
+
   public budget(budget: Partial<AgentBudget>): this {
     const agentBudget = createAgentBudget(budget);
     validateBudget(agentBudget);

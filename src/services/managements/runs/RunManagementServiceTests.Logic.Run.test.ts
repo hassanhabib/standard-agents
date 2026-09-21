@@ -123,6 +123,46 @@ describe("RunManagementService run logic", () => {
     verifyNoOtherCalls(dataCoordinationServiceMock, { retrieveRemoteTools: 1, recall: 3 });
   });
 
+  it("ShouldStopWhenTheSameActIsAskedForTooOftenAsync", async () => {
+    // given
+    // Sixty-four turns to spend and a Brain that asks for the same page of the same file on every
+    // one of them. Watched live, twice: the replay note said "use it and do something else", the
+    // note-only replay said it again, and the model asked eleven more times with the note in
+    // front of it. A note is not enough for every model, and a run that keeps asking for what it
+    // has been handed is a run going in circles, whatever else its turn cap allows.
+    const { dataCoordinationServiceMock, decisionCoordinationServiceMock, directionCoordinationServiceMock, loggingBrokerMock, runManagementService } =
+      createRunManagementServiceTests({ maxTurns: 64 });
+
+    const expectedMessage =
+      "I asked for the same thing eight times and stopped: the run was going in circles, so it ended rather than spend the rest of its turns the same way; nothing was delivered.";
+
+    const { events, emit } = collectEvents();
+    dataCoordinationServiceMock.retrieveRemoteTools.mockResolvedValue([]);
+    dataCoordinationServiceMock.recall.mockImplementation(async (context) => recalled(context));
+    decisionCoordinationServiceMock.think.mockImplementation(async (context) => thoughtTool(context, "read_file", '{"path":"index.html"}'));
+    directionCoordinationServiceMock.act.mockImplementation(async (context) => actedTool(context, "the same page"));
+
+    // when
+    const actualOutcome = await runManagementService.runWithEvents(createPromptRequest(createRandomString()), emit);
+
+    // then
+    // Eight, and not sixty-four: above the default turn cap, so a deployment on the default never
+    // meets this and the cap stays the loop's first breaker, and far below what a window or a
+    // terminal gives a run. Reported the way a budget stop is, because it is one: not a refusal
+    // and not an answer, and a caller that cannot tell the two apart cannot decide what to do next.
+    expect(actualOutcome).toEqual({
+      result: expectedMessage,
+      status: "Failed",
+      pendingEffect: null,
+      failure: { category: "Service", code: "going_in_circles", message: expectedMessage },
+    });
+
+    expect(events[events.length - 1]).toEqual({ type: "Status", content: expectedMessage });
+    expect(loggingBrokerMock.logOutcome).toHaveBeenCalledWith(`stopped: ${expectedMessage}`);
+    verifyNoOtherCalls(decisionCoordinationServiceMock, { think: 8 });
+    verifyNoOtherCalls(directionCoordinationServiceMock, { act: 8 });
+  });
+
   it("ShouldSpendATurnOnRevisingWithoutActingAsync", async () => {
     // given
     const { dataCoordinationServiceMock, decisionCoordinationServiceMock, directionCoordinationServiceMock, loggingBrokerMock, runManagementService } =
