@@ -4,6 +4,23 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.7.0]
+
+### Direction
+
+- From the third identical call on, a replay is the note alone and not the bytes. Watched live: a
+  990-line file read in three pages, then the first page asked for fourteen more times, each
+  answered with the same sixteen kilobytes and the same "already ran" note, until the turns ran out
+  with nothing done. The note was right and was not enough, and every copy cost the person a turn's
+  worth of context while buying the model nothing it did not already have.
+- The run goes on. Whether a run that keeps asking should end is the loop's contract to decide, and
+  the contract says the turn cap decides it: conformance 06 pins the cap and 17 pins that three
+  identical proposals may still end in a delivered answer. Ending the run sooner is a contract
+  change and is not made here.
+- Read from the observations rather than a counter, so both protocols carry it: the native path
+  keeps exchanges and the text path does not, and a guard that only fired on one of them would be a
+  guard the other door never had.
+
 ## [0.6.0]
 
 ### Decision
