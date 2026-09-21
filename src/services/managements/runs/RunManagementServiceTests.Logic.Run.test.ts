@@ -4,7 +4,7 @@ import { createPromptRequest } from "../../../models/clients/agents/PromptReques
 import { createAgentBudget } from "../../../models/coordinations/agents/AgentBudget.js";
 import { AgentRun } from "../../../models/loggings/AgentRun.js";
 import { DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE } from "../../../models/brokers/generators/ResolvedInference.js";
-import { actedResponse, actedTool, collectEvents, createRandomString, createRunManagementServiceTests, recalled, thoughtAnswer, thoughtTool, verifyNoOtherCalls } from "./RunManagementServiceTests.js";
+import { actedReplay, actedResponse, actedTool, collectEvents, createRandomString, createRunManagementServiceTests, recalled, thoughtAnswer, thoughtTool, verifyNoOtherCalls } from "./RunManagementServiceTests.js";
 
 describe("RunManagementService run logic", () => {
   it("ShouldRunToAnAnswerAsync", async () => {
@@ -140,7 +140,11 @@ describe("RunManagementService run logic", () => {
     dataCoordinationServiceMock.retrieveRemoteTools.mockResolvedValue([]);
     dataCoordinationServiceMock.recall.mockImplementation(async (context) => recalled(context));
     decisionCoordinationServiceMock.think.mockImplementation(async (context) => thoughtTool(context, "read_file", '{"path":"index.html"}'));
-    directionCoordinationServiceMock.act.mockImplementation(async (context) => actedTool(context, "the same page"));
+
+    // The first ask runs; every one after it is answered from the ledger, and says so.
+    directionCoordinationServiceMock.act.mockImplementation(async (context) =>
+      context.toolExchanges.length === 0 ? actedTool(context, "the same page") : actedReplay(context, "the same page"),
+    );
 
     // when
     const actualOutcome = await runManagementService.runWithEvents(createPromptRequest(createRandomString()), emit);
@@ -161,6 +165,30 @@ describe("RunManagementService run logic", () => {
     expect(loggingBrokerMock.logOutcome).toHaveBeenCalledWith(`stopped: ${expectedMessage}`);
     verifyNoOtherCalls(decisionCoordinationServiceMock, { think: 8 });
     verifyNoOtherCalls(directionCoordinationServiceMock, { act: 8 });
+  });
+
+  it("ShouldNotStopWhenTheSameActRanAgainForRealAsync", async () => {
+    // given
+    // The same read, ten times, and every one of them performed: what a run looks like when it
+    // reads a file, edits it, reads it back, edits it again and reads it back. Watched live: a loop
+    // that counted identical asks stopped that run at four with "going in circles", on every task,
+    // because the asks were identical and the loop never looked at whether they did anything.
+    const { dataCoordinationServiceMock, decisionCoordinationServiceMock, directionCoordinationServiceMock, runManagementService } =
+      createRunManagementServiceTests({ maxTurns: 10 });
+
+    dataCoordinationServiceMock.retrieveRemoteTools.mockResolvedValue([]);
+    dataCoordinationServiceMock.recall.mockImplementation(async (context) => recalled(context));
+    decisionCoordinationServiceMock.think.mockImplementation(async (context) => thoughtTool(context, "read_file", '{"path":"index.html"}'));
+    directionCoordinationServiceMock.act.mockImplementation(async (context) => actedTool(context, "the page as it is now"));
+
+    // when
+    const actualOutcome = await runManagementService.run(createPromptRequest(createRandomString()));
+
+    // then
+    // The turns run out, which is the cap's business; nothing here was going in circles, because
+    // every ask was answered by the tool and not by the ledger.
+    expect(actualOutcome.failure?.code).toBe("turns_exhausted");
+    verifyNoOtherCalls(directionCoordinationServiceMock, { act: 10 });
   });
 
   it("ShouldSpendATurnOnRevisingWithoutActingAsync", async () => {
