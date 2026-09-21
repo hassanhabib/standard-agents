@@ -287,6 +287,25 @@ describe("DirectionCoordinationService act logic", () => {
     verifyNoOtherCalls(executionOrchestrationServiceMock, { run: 1 });
   });
 
+  it("ShouldMarkAReplayedExchangeAsAReplayAsync", async () => {
+    // given
+    const { perimeterOrchestrationServiceMock, directionCoordinationService } = createDirectionCoordinationServiceTests();
+
+    const context: AgentContext = { ...toolContext(), toolCallId: "call-2" };
+    perimeterOrchestrationServiceMock.authorize.mockResolvedValue(allow());
+    perimeterOrchestrationServiceMock.claim.mockResolvedValue({ verdict: "Replay", outcome: createRandomString(), record: null });
+
+    // when
+    const actualContext = await directionCoordinationService.act(context);
+
+    // then
+    // Said on the exchange, so whatever counts a run's asks can tell a replay from a call that
+    // ran. Watched live: a loop that counted identical calls stopped a run that had read a file,
+    // edited it, read it back, edited it again and read it back, four asks for the same thing and
+    // every one of them real. The ones that did nothing are the ones the ledger answered.
+    expect(actualContext.toolExchanges.at(-1)?.replayed).toBe(true);
+  });
+
   it("ShouldTellInProgressOnActIfAnotherRunHoldsTheClaimAsync", async () => {
     // given
     const { perimeterOrchestrationServiceMock, executionOrchestrationServiceMock, directionCoordinationService } =
