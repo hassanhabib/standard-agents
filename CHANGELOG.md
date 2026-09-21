@@ -4,6 +4,19 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.10.0]
+
+### The loop
+
+- **Only the asks the ledger answered count as going in circles.** 0.9.0 counted identical asks,
+  and a read after an edit is the same ask and is not a repeat: a run that read a file, edited it,
+  read it back, edited it again and read it back was stopped at four with "going in circles", on
+  every task, because the asks were identical and the loop never looked at whether they did
+  anything. Watched live within the hour.
+- A replayed exchange now says so (`ToolExchange.replayed`, absent on a call that ran), and the
+  limit counts the replays on top of the one call that ran. A read that ran again because the file
+  changed is a call that ran.
+
 ## [0.9.0]
 
 ### The loop
