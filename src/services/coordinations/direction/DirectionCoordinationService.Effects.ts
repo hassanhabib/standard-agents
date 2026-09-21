@@ -65,6 +65,34 @@ export function replayed(toolName: string, outcome: string): string {
   );
 }
 
+// Whether this run has already been handed this replay, note and all. The note said "use it and
+// do something else"; a run asking a third time is doing the same thing instead, and the observation
+// it left behind the last time is the proof.
+//
+// Read from the observations rather than from a counter, because they are what both protocols
+// carry: the native path keeps exchanges and the text path does not, and a guard that only fired on
+// one of them would be a guard the other door never had.
+export function alreadyReplayed(context: AgentContext, toolName: string, outcome: string): boolean {
+  return context.observations.includes(`${toolName}: ${replayed(toolName, outcome)}`);
+}
+
+// The note alone, from the third identical call on.
+//
+// Watched live: a 990-line file read in three pages, then the first page asked for fourteen more
+// times, each answered with the same sixteen kilobytes and the same note, until the turns ran out
+// with nothing done. The note was right and was not enough, and every copy cost the person a turn's
+// worth of context. Not the outcome again: the model has had it twice, and a third copy is the bytes
+// it was looking at when it decided to ask again.
+//
+// The run goes on. Whether a run that keeps asking should end is the loop's contract to decide, and
+// the contract says the turn cap decides it (SPEC.md 4.9, conformance 06 and 17).
+export function replayedAgain(toolName: string): string {
+  return (
+    `[${toolName} was asked for a third time with the same arguments. Its answer is above, from the ` +
+    `first time, and is not repeated. Use it, ask for something different, or answer.]`
+  );
+}
+
 // The result is kept beside the call that asked for it too, so the next turn can hand it back as
 // a tool message rather than as narration on the native path (SPEC.md 6). Observations still
 // carry it: they are what the text path reads, and what the trace and the Judge read on both.

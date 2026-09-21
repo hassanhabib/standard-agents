@@ -9,10 +9,12 @@ import type { RiskLevel } from "../../../models/orchestrations/effects/RiskLevel
 import type { ExecutionOrchestrationService } from "../../orchestrations/direction/executions/ExecutionOrchestrationService.js";
 import type { PerimeterOrchestrationService } from "../../orchestrations/direction/perimeters/PerimeterOrchestrationService.js";
 import {
+  alreadyReplayed,
   denied,
   isTerminal,
   observed,
   replayed,
+  replayedAgain,
   toTerminalStatus,
   unreconciled,
 } from "./DirectionCoordinationService.Effects.js";
@@ -147,6 +149,15 @@ export class DirectionCoordinationService {
     const claim = await this.perimeterOrchestrationService.claim(effect);
 
     if (claim.verdict === "Replay") {
+      // Once is a replay, with a note saying so. From the third identical call on it is the note
+      // alone: the bytes have been handed back twice, and a third copy costs the person context and
+      // buys the model nothing it did not already have.
+      if (alreadyReplayed(context, effect.toolName, claim.outcome ?? "")) {
+        await this.loggingBroker.logProcess("Direction", `'${effect.toolName}' asked for a third time with the same arguments -> note only`);
+
+        return observed(context, replayedAgain(effect.toolName));
+      }
+
       return observed(context, replayed(effect.toolName, claim.outcome ?? ""));
     }
 

@@ -5,6 +5,8 @@ import { AgentRun } from "../../../models/loggings/AgentRun.js";
 import { createAgentEffect } from "../../../models/orchestrations/effects/AgentEffect.js";
 import { allow, deny } from "../../../models/orchestrations/effects/AuthorizationDecision.js";
 import { AgentOrchestrationDependencyException } from "../../../models/orchestrations/agents/exceptions/AgentOrchestrationDependencyException.js";
+import type { AgentContext } from "../../../models/orchestrations/agents/AgentContext.js";
+import { replayed } from "./DirectionCoordinationService.Effects.js";
 import { createDirectionCoordinationServiceTests, createRandomString, proceed, toolContext, verifyNoOtherCalls } from "./DirectionCoordinationServiceTests.js";
 
 describe("DirectionCoordinationService act logic", () => {
@@ -187,6 +189,49 @@ describe("DirectionCoordinationService act logic", () => {
     // Carried into the observations as it is read, rather than the bare outcome: a note the next
     // turn cannot see is a note nobody wrote.
     expect(actualContext.observations.at(-1)).toContain("already ran");
+
+    verifyNoOtherCalls(perimeterOrchestrationServiceMock, { authorize: 1, claim: 1 });
+    verifyNoOtherCalls(executionOrchestrationServiceMock);
+  });
+
+  it("ShouldReplayOnlyTheNoteWhenTheSameActIsAskedForAThirdTimeAsync", async () => {
+    // given
+    const { perimeterOrchestrationServiceMock, executionOrchestrationServiceMock, directionCoordinationService } =
+      createDirectionCoordinationServiceTests();
+
+    const outcome = createRandomString();
+    const context = toolContext();
+
+    // The two calls before this one: the first ran and answered, the second was replayed and said
+    // so. The note said "use it and do something else", and this call is the model doing the same
+    // thing instead. Watched live: a 990-line file read in three pages, then the first page asked
+    // for fourteen more times, each answered with the same sixteen kilobytes and the same note,
+    // until the turns ran out with nothing done.
+    const twice: AgentContext = {
+      ...context,
+      observations: [
+        ...context.observations,
+        `${context.directionType}: ${outcome}`,
+        `${context.directionType}: ${replayed(context.directionType, outcome)}`,
+      ],
+    };
+
+    perimeterOrchestrationServiceMock.authorize.mockResolvedValue(allow());
+    perimeterOrchestrationServiceMock.claim.mockResolvedValue({ verdict: "Replay", outcome, record: null });
+
+    // when
+    const actualContext = await directionCoordinationService.act(twice);
+
+    // then
+    // The note alone, and not the bytes. The model has had the outcome twice, and a third copy is
+    // the thing that was not working: it is the bytes it was looking at when it decided to ask
+    // again, and every copy costs the person a turn's worth of context. The run itself goes on,
+    // because whether a run that keeps asking should end is the loop's contract to decide, and the
+    // contract says the turn cap decides it.
+    expect(actualContext.status).toBe("Working");
+    expect(actualContext.result).toContain("third time");
+    expect(actualContext.result).not.toContain(outcome);
+    expect(actualContext.observations.at(-1)).toContain("third time");
 
     verifyNoOtherCalls(perimeterOrchestrationServiceMock, { authorize: 1, claim: 1 });
     verifyNoOtherCalls(executionOrchestrationServiceMock);
