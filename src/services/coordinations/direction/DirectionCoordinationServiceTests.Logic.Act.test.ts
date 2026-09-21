@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createResolvedInference } from "../../../models/brokers/generators/ResolvedInference.js";
 import { AgentRun } from "../../../models/loggings/AgentRun.js";
-import { createAgentEffect } from "../../../models/orchestrations/effects/AgentEffect.js";
+import { createAgentEffect, type AgentEffect } from "../../../models/orchestrations/effects/AgentEffect.js";
 import { allow, deny } from "../../../models/orchestrations/effects/AuthorizationDecision.js";
 import { AgentOrchestrationDependencyException } from "../../../models/orchestrations/agents/exceptions/AgentOrchestrationDependencyException.js";
 import type { AgentContext } from "../../../models/orchestrations/agents/AgentContext.js";
@@ -235,6 +235,56 @@ describe("DirectionCoordinationService act logic", () => {
 
     verifyNoOtherCalls(perimeterOrchestrationServiceMock, { authorize: 1, claim: 1 });
     verifyNoOtherCalls(executionOrchestrationServiceMock);
+  });
+
+  it("ShouldReadAgainOnActWhenSomethingWroteToThePlaceSinceAsync", async () => {
+    // given
+    // A read, then a write to the same file, then the same read again. Watched live: the model
+    // edited line 10 and read the file back to see its edit, and the run-once perimeter handed it
+    // the file as it was before the edit, then the note saying it already had that. The re-read
+    // was the right thing to do; the replay was stale, and it asked again and again.
+    const { perimeterOrchestrationServiceMock, executionOrchestrationServiceMock, directionCoordinationService } =
+      createDirectionCoordinationServiceTests({
+        toolRisk: new Map([
+          ["read_file", "Safe"],
+          ["write_file", "Irreversible"],
+        ]),
+        toolScope: new Map([
+          ["read_file", (input: string): string => input],
+          ["write_file", (input: string): string => input],
+        ]),
+      });
+
+    const context: AgentContext = {
+      ...toolContext("read_file", "index.html"),
+      toolExchanges: [
+        { callId: "c1", toolName: "read_file", argumentsJson: "index.html", result: "the file before" },
+        { callId: "c2", toolName: "write_file", argumentsJson: "index.html", result: "edited" },
+      ],
+    };
+
+    perimeterOrchestrationServiceMock.authorize.mockResolvedValue(allow());
+    perimeterOrchestrationServiceMock.claim.mockResolvedValue(proceed());
+    perimeterOrchestrationServiceMock.recordOutcome.mockResolvedValue(undefined);
+    executionOrchestrationServiceMock.run.mockResolvedValue("the file after");
+
+    // when
+    const [actualContext, runId] = await AgentRun.begin(null, undefined, async () => {
+      const acted = await directionCoordinationService.act(context);
+
+      return [acted, AgentRun.current()?.id ?? ""];
+    });
+
+    // then
+    // A new act in the ledger, not the old one asked for again: the ledger remembers what the file
+    // said, and the file has changed since. So the key it is claimed under is not the key the same
+    // read had before the write, and the read runs.
+    const beforeTheWrite = createAgentEffect(runId, "read_file", "index.html", "Safe", false, null, "index.html");
+    const claimedWith = perimeterOrchestrationServiceMock.claim.mock.calls[0]?.[0] as AgentEffect;
+
+    expect(claimedWith.idempotencyKey).not.toBe(beforeTheWrite.idempotencyKey);
+    expect(actualContext.result).toBe("the file after");
+    verifyNoOtherCalls(executionOrchestrationServiceMock, { run: 1 });
   });
 
   it("ShouldTellInProgressOnActIfAnotherRunHoldsTheClaimAsync", async () => {
