@@ -145,6 +145,7 @@ export function compose(configuration: AgentConfiguration): RunManagementService
     createRunOptions({
       maxTurns: configuration.maxTurns,
       maxHistoryTurns: configuration.maxHistoryTurns,
+      identicalCallLimit: configuration.identicalCallLimit,
       budget: configuration.budget,
       screenToolOutput: configuration.screenToolOutput,
       contractSchema: configuration.contractSchema,

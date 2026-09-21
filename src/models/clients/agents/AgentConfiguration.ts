@@ -19,7 +19,7 @@ import type { PrincipalResolver } from "../../coordinations/agents/PrincipalReso
 import type { ToolSelector } from "../../coordinations/agents/ToolSelector.js";
 import type { PermissionMode } from "../../orchestrations/effects/PermissionMode.js";
 import type { RiskLevel } from "../../orchestrations/effects/RiskLevel.js";
-import { DEFAULT_MAX_HISTORY_TURNS, DEFAULT_MAX_TURNS } from "../../managements/runs/RunOptions.js";
+import { DEFAULT_IDENTICAL_CALL_LIMIT, DEFAULT_MAX_HISTORY_TURNS, DEFAULT_MAX_TURNS } from "../../managements/runs/RunOptions.js";
 
 // What the builder verbs recorded, before anything is composed (SPEC.md 4.8). A null broker
 // means the host expressed no opinion and the composition supplies the not-configured one; an
@@ -54,6 +54,9 @@ export interface AgentConfiguration {
   enforceSelection: boolean;
   screenToolOutput: boolean;
   maxTurns: number;
+
+  // How many times a run may ask for the same act before the loop ends it.
+  identicalCallLimit: number;
   budget: AgentBudget | null;
   usageBroker: UsageBroker | null;
   loggingBroker: LoggingBroker | null;
@@ -91,6 +94,7 @@ export function createAgentConfiguration(): AgentConfiguration {
     enforceSelection: false,
     screenToolOutput: false,
     maxTurns: DEFAULT_MAX_TURNS,
+    identicalCallLimit: DEFAULT_IDENTICAL_CALL_LIMIT,
     budget: null,
     usageBroker: null,
     loggingBroker: null,
