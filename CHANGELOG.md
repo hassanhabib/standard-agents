@@ -4,6 +4,21 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.8.0]
+
+### Direction
+
+- A read after a write to the same place is a new question, not the old one asked again. The
+  ledger remembers what a read said and replays it to the same read for the rest of the run, which
+  is right for an act and wrong for a look at something an act has since changed. Watched live: the
+  model edited line 10 of a file and read it back to see its edit, was handed the file as it was
+  before the edit with a note saying it already had that, and asked again and again, because the
+  answer was stale and the note said it was not.
+- A Safe act whose scope this run has since written to is claimed under a key that counts the
+  writes, which makes it a different act in the ledger: it runs, and a second identical read after
+  the same write replays as before. Acts that are not Safe keep their key exactly: a transfer
+  proposed twice is one transfer, whatever else happened in between (conformance 17).
+
 ## [0.7.0]
 
 ### Direction
