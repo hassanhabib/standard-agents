@@ -96,12 +96,12 @@ export function replayedAgain(toolName: string): string {
 // The result is kept beside the call that asked for it too, so the next turn can hand it back as
 // a tool message rather than as narration on the native path (SPEC.md 6). Observations still
 // carry it: they are what the text path reads, and what the trace and the Judge read on both.
-export function observed(context: AgentContext, output: string): AgentContext {
+export function observed(context: AgentContext, output: string, replayed = false): AgentContext {
   return {
     ...context,
     result: output,
     observations: [...context.observations, `${context.directionType}: ${output}`],
-    toolExchanges: withExchange(context, output),
+    toolExchanges: withExchange(context, output, replayed),
     status: "Working",
   };
 }
@@ -128,7 +128,7 @@ export function unreconciled(context: AgentContext, effect: AgentEffect, record:
 // A call the model made gets an answer, whatever the answer is. A denial and a withheld result
 // are answers; leaving the call unanswered would strand it, and some providers reject a
 // conversation whose tool call has no matching tool message (SPEC.md 6).
-function withExchange(context: AgentContext, result: string): readonly ToolExchange[] {
+function withExchange(context: AgentContext, result: string, replayed = false): readonly ToolExchange[] {
   if (context.toolCallId.length === 0) {
     return context.toolExchanges;
   }
@@ -138,8 +138,13 @@ function withExchange(context: AgentContext, result: string): readonly ToolExcha
   // empty, because an empty string is a thing said.
   const said = context.assistantContent.length > 0 ? { assistantContent: context.assistantContent } : {};
 
+  // And whether the ledger answered it rather than the tool, said only when it did: a loop that
+  // counts a run's asks has to tell a replay from a call that ran, and a read after an edit is the
+  // same ask and is not a repeat.
+  const answeredFromTheLedger = replayed ? { replayed: true } : {};
+
   return [
     ...context.toolExchanges,
-    { callId: context.toolCallId, toolName: context.directionType, argumentsJson: context.payload, result, ...said },
+    { callId: context.toolCallId, toolName: context.directionType, argumentsJson: context.payload, result, ...said, ...answeredFromTheLedger },
   ];
 }

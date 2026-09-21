@@ -158,10 +158,10 @@ export class DirectionCoordinationService {
       if (alreadyReplayed(context, effect.toolName, claim.outcome ?? "")) {
         await this.loggingBroker.logProcess("Direction", `'${effect.toolName}' asked for a third time with the same arguments -> note only`);
 
-        return observed(context, replayedAgain(effect.toolName));
+        return observed(context, replayedAgain(effect.toolName), true);
       }
 
-      return observed(context, replayed(effect.toolName, claim.outcome ?? ""));
+      return observed(context, replayed(effect.toolName, claim.outcome ?? ""), true);
     }
 
     if (claim.verdict === "InProgress") {
