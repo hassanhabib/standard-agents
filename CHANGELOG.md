@@ -4,6 +4,25 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.9.0]
+
+### The loop
+
+- **A run that keeps asking for the same act ends.** `identicalCallLimit`, on the run options and
+  the builder, is how many times a run may ask for the same act with the same arguments before
+  the loop ends it. The run-once perimeter answers the second ask with a replay and a note and the
+  third with the note alone, and watched live, twice, a model went on asking eleven more times with
+  the note in front of it. A note is not enough for every model, and a turn cap of sixty-four is
+  sixty turns of the same question.
+- Reported the way a budget stop is, `Failed` with the code `going_in_circles`, because it is one:
+  not a refusal and not an answer, and a caller that cannot tell the two apart cannot decide what
+  to do next.
+- Eight by default, which is above the default turn cap of seven: a deployment on the default never
+  meets this and the cap stays the loop's first breaker, so conformance 06 and 17 hold as they are.
+  A deployment that gives a run more turns is the one this is for, and it says how many is enough.
+- Counted over the run's own exchanges, which the native protocol keeps; the text protocol keeps
+  none and stays on the turn cap, as it always has.
+
 ## [0.8.0]
 
 ### Direction
