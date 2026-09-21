@@ -2,7 +2,7 @@ import type { LoggingBroker } from "../../../brokers/loggings/LoggingBroker.js";
 import { createPerimeterPolicy, type PerimeterPolicy } from "../../../models/coordinations/directions/PerimeterPolicy.js";
 import { AgentRun } from "../../../models/loggings/AgentRun.js";
 import type { AgentContext } from "../../../models/orchestrations/agents/AgentContext.js";
-import { createAgentEffect, type AgentEffect } from "../../../models/orchestrations/effects/AgentEffect.js";
+import { createAgentEffect, deriveIdempotencyKey, type AgentEffect } from "../../../models/orchestrations/effects/AgentEffect.js";
 import type { AgentPrincipal } from "../../../models/orchestrations/effects/AgentPrincipal.js";
 import type { ApprovalVerdict } from "../../../models/orchestrations/effects/ApprovalVerdict.js";
 import type { RiskLevel } from "../../../models/orchestrations/effects/RiskLevel.js";
@@ -113,14 +113,17 @@ export class DirectionCoordinationService {
 
     // Who is acting is asked at the moment the act is described, so the policy deciding whether
     // it may happen is told, not merely the record written afterwards (SPEC.md 4.9).
-    const effect = createAgentEffect(
-      currentRunId(),
-      context.directionType,
-      context.payload,
-      this.riskLevelFor(context.directionType),
-      this.requiresApproval(context.directionType),
-      this.principal(),
-      this.scopeFor(context.directionType, context.payload),
+    const effect = this.afterWhatChangedIt(
+      context,
+      createAgentEffect(
+        currentRunId(),
+        context.directionType,
+        context.payload,
+        this.riskLevelFor(context.directionType),
+        this.requiresApproval(context.directionType),
+        this.principal(),
+        this.scopeFor(context.directionType, context.payload),
+      ),
     );
 
     // 1. Authorize.
@@ -309,6 +312,39 @@ export class DirectionCoordinationService {
   }
 
   // What the act is about to touch, as the tool named it. The framework never parses arguments.
+  // A read after a write to the same place is a new question, not the old one asked again.
+  //
+  // The ledger remembers what a read said and replays it to the same read for the rest of the run
+  // (SPEC.md 4.9), which is right for an act and wrong for a look at something an act has since
+  // changed. Watched live: the model edited line 10 of a file and read it back to see its edit,
+  // was handed the file as it was before the edit with a note saying it already had that, and
+  // asked again and again, because the answer was stale and the note said it was not.
+  //
+  // So a Safe act whose scope this run has since written to is claimed under a key that counts
+  // the writes, which makes it a different act in the ledger: it runs, and a second identical
+  // read after the same write replays as before. Acts that are not Safe keep their key exactly:
+  // a transfer proposed twice is one transfer, whatever else happened in between.
+  private afterWhatChangedIt(context: AgentContext, effect: AgentEffect): AgentEffect {
+    if (effect.riskLevel !== "Safe" || effect.scope.length === 0) {
+      return effect;
+    }
+
+    const writes = context.toolExchanges.filter(
+      (exchange) =>
+        this.riskLevelFor(exchange.toolName) !== "Safe" &&
+        this.scopeFor(exchange.toolName, exchange.argumentsJson) === effect.scope,
+    ).length;
+
+    if (writes === 0) {
+      return effect;
+    }
+
+    return {
+      ...effect,
+      idempotencyKey: deriveIdempotencyKey(effect.runId, effect.toolName, `${effect.arguments}|after-writes:${String(writes)}`),
+    };
+  }
+
   private scopeFor(toolName: string, effectArguments: string): string {
     const scopeOf = this.policy.toolScope.get(toolName);
 
