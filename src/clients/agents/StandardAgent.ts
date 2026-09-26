@@ -319,6 +319,16 @@ export class StandardAgent {
     });
   }
 
+  // How many of the most recent calls a native turn sends whole. Three is the framework's default
+  // and a chat's worth; a composition whose tools hand back files in pages says how many pages it
+  // needs in view at once. A provider that refuses the conversation as too large still climbs down
+  // the ladder from here, so a generous window costs a round trip at worst.
+  public elisionWindow(calls: number): this {
+    return this.set((configuration) => {
+      configuration.elisionWindow = calls;
+    });
+  }
+
   public budget(budget: Partial<AgentBudget>): this {
     const agentBudget = createAgentBudget(budget);
     validateBudget(agentBudget);

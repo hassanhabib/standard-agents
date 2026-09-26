@@ -19,6 +19,7 @@ import type { PrincipalResolver } from "../../coordinations/agents/PrincipalReso
 import type { ToolSelector } from "../../coordinations/agents/ToolSelector.js";
 import type { PermissionMode } from "../../orchestrations/effects/PermissionMode.js";
 import type { RiskLevel } from "../../orchestrations/effects/RiskLevel.js";
+import { DEFAULT_ELISION_WINDOW } from "../../foundations/brains/NativeAsk.js";
 import { DEFAULT_IDENTICAL_CALL_LIMIT, DEFAULT_MAX_HISTORY_TURNS, DEFAULT_MAX_TURNS } from "../../managements/runs/RunOptions.js";
 
 // What the builder verbs recorded, before anything is composed (SPEC.md 4.8). A null broker
@@ -57,6 +58,10 @@ export interface AgentConfiguration {
 
   // How many times a run may ask for the same act before the loop ends it.
   identicalCallLimit: number;
+
+  // How many of the most recent calls a native turn sends whole. Older ones keep what they were
+  // and lose what they returned.
+  elisionWindow: number;
   budget: AgentBudget | null;
   usageBroker: UsageBroker | null;
   loggingBroker: LoggingBroker | null;
@@ -95,6 +100,7 @@ export function createAgentConfiguration(): AgentConfiguration {
     screenToolOutput: false,
     maxTurns: DEFAULT_MAX_TURNS,
     identicalCallLimit: DEFAULT_IDENTICAL_CALL_LIMIT,
+    elisionWindow: DEFAULT_ELISION_WINDOW,
     budget: null,
     usageBroker: null,
     loggingBroker: null,
