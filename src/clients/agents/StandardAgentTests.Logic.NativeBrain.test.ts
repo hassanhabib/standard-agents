@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { FunctionGeneratorBrokerV1, createGenerationResult } from "../../brokers/generators/FunctionGeneratorBrokerV1.js";
 import type { ResolvedInference } from "../../models/brokers/generators/ResolvedInference.js";
 import { StandardAgent } from "./StandardAgent.js";
-import { createRandomString, createScriptedBrain, createSkillSource } from "./StandardAgentTests.js";
+import { createRandomString, createScriptedBrain, createSkillSource, createStubTool } from "./StandardAgentTests.js";
 
 describe("StandardAgent native brain logic", () => {
   it("ShouldThinkThroughTheNativeBrainWhenGivenOneAsync", async () => {
@@ -72,6 +72,44 @@ describe("StandardAgent native brain logic", () => {
     // answer, and a run whose tools carry files was cut off mid-argument by it.
     expect(seen[0]?.maxTokens).toBe(8192);
     expect(seen[0]?.temperature).toBe(0.2);
+  });
+
+  it("ShouldKeepAsManyResultsInViewAsTheCompositionSaysAsync", async () => {
+    // given
+    // Four pages of one file, then an answer. The framework keeps three results whole by default,
+    // which a coding agent reading a long file in pages has already outgrown by the fourth.
+    let lastConversation: ReadonlyArray<{ role: string; content: string }> = [];
+    let asked = 0;
+
+    const nativeBroker = new FunctionGeneratorBrokerV1(async (messages) => {
+      asked += 1;
+      lastConversation = messages;
+
+      if (asked <= 4) {
+        return createGenerationResult({
+          toolCalls: [{ id: `call_${asked}`, name: "read_file", argumentsJson: `{"path":"index.html","page":${asked}}` }],
+          finishReason: "tool_calls",
+        });
+      }
+
+      return createGenerationResult({ content: "read all four" });
+    });
+
+    const agent = new StandardAgent()
+      .onBrain(createScriptedBrain(["FINAL: unused"]).generate)
+      .useNativeGenerator(nativeBroker)
+      .tool(createStubTool("read_file", "a page of index.html", "Read a file in the workspace."))
+      .elisionWindow(4)
+      .onSkills(createSkillSource(createRandomString()));
+
+    // when
+    await agent.processPrompt("read index.html");
+
+    // then
+    const toolMessages = lastConversation.filter((message) => message.role === "Tool");
+
+    expect(toolMessages).toHaveLength(4);
+    expect(toolMessages.every((message) => message.content.startsWith("a page of index.html"))).toBe(true);
   });
 
   it.each(["", "api.example.com/v1/", "https://api.example.com/v1", "https://api.example.com/v1/chat/completions"])(

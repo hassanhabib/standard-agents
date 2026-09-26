@@ -24,6 +24,7 @@ import { DataCoordinationService } from "../../services/coordinations/data/DataC
 import { DecisionCoordinationService } from "../../services/coordinations/decision/DecisionCoordinationService.js";
 import { DirectionCoordinationService } from "../../services/coordinations/direction/DirectionCoordinationService.js";
 import { ApprovalService } from "../../services/foundations/approvals/ApprovalService.js";
+import { createNativeOptions } from "../../models/foundations/brains/NativeAsk.js";
 import { BrainService } from "../../services/foundations/brains/BrainService.js";
 import { ContractService } from "../../services/foundations/contracts/ContractService.js";
 import { EffectLedgerService } from "../../services/foundations/effects/EffectLedgerService.js";
@@ -84,7 +85,12 @@ export function compose(configuration: AgentConfiguration): RunManagementService
   // goes in and scores what comes out.
   const decisionCoordinationService = new DecisionCoordinationService(
     new InferenceOrchestrationService(
-      new BrainService(generator, logging, configuration.generatorBrokerV1),
+      new BrainService(
+        generator,
+        logging,
+        configuration.generatorBrokerV1,
+        createNativeOptions({ elisionWindow: configuration.elisionWindow }),
+      ),
       new UsageService(configuration.usageBroker ?? new RatioUsageBroker(), logging),
       logging,
       renderToolDefinitions(tools),

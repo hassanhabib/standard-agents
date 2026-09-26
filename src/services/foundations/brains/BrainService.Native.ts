@@ -75,8 +75,33 @@ function exchangeMessages(exchanges: readonly ToolExchange[], keptCallIds: Reado
 function recentCallIds(ask: NativeAsk, elisionWindow: number): ReadonlySet<string> {
   const everyExchange = [...ask.history.flatMap((turn) => turn.exchanges), ...ask.exchanges];
   const kept = elisionWindow <= 0 ? [] : everyExchange.slice(-elisionWindow);
+  const keptCallIds = new Set(kept.map((exchange) => exchange.callId));
 
-  return new Set(kept.map((exchange) => exchange.callId));
+  for (const exchange of kept) {
+    const answered = exchange.replayed === true ? callItReplays(everyExchange, exchange) : undefined;
+
+    if (answered !== undefined) {
+      keptCallIds.add(answered.callId);
+    }
+  }
+
+  return keptCallIds;
+}
+
+// A replay tells the model its answer is above. Watched live: a file read in pages, the first page
+// pushed out of the window by the later ones, then asked for again, and "above" was a marker. The
+// model was told to use what it could not see, and read the same file forty more times. So the call
+// a replay stands for stays in view as long as the replay does: the latest one with the same tool
+// and arguments that actually ran, because that is the answer the ledger handed back.
+function callItReplays(everyExchange: readonly ToolExchange[], replay: ToolExchange): ToolExchange | undefined {
+  const earlierNewestFirst = everyExchange.slice(0, everyExchange.indexOf(replay)).reverse();
+
+  return earlierNewestFirst.find(
+    (exchange) =>
+      exchange.replayed !== true &&
+      exchange.toolName === replay.toolName &&
+      exchange.argumentsJson === replay.argumentsJson,
+  );
 }
 
 // An observation a call already answers for is not said twice: the exchange carries it in the

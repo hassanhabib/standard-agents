@@ -4,6 +4,21 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.11.0]
+
+### The native conversation
+
+- **A replay's answer stays in view.** A replay tells the model its answer is above, and from the
+  third ask it sends only that note. The native conversation keeps the last three results whole and
+  turns older ones into a marker, so a file read in pages pushed its first page out, and "above"
+  was a marker. Watched live: the model was told to use what it could not see and read the same
+  977-line file forty more times. A replay in view now keeps the latest call it stands for in view
+  as well.
+- **How many results stay whole is the composition's to say.** `elisionWindow(calls)` on the
+  builder sets how many of the most recent calls a native turn sends whole. The default stays at
+  three. A provider that refuses the conversation as too large still climbs down the ladder, so a
+  larger window costs a round trip at worst.
+
 ## [0.10.0]
 
 ### The loop
