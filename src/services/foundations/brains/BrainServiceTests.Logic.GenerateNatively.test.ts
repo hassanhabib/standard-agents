@@ -71,6 +71,51 @@ describe("BrainService native logic", () => {
     expect(messages.filter((message) => message.toolCalls.length > 0)).toHaveLength(2);
   });
 
+  it("ShouldKeepTheAnswerAReplayPointsBackToAsync", async () => {
+    // given
+    // Watched live: a 977-line file read in pages, the first page pushed out of the window by the
+    // later ones, then asked for again. The replay said its answer was above; above was a marker.
+    // The model could not see the file it was told to use, and read it forty more times.
+    const { generatorBrokerV1Mock, brainService } = createNativeBrainServiceTests({ elisionWindow: 1 });
+
+    const firstPage = createExchange({
+      callId: "call_1",
+      toolName: "read_file",
+      argumentsJson: '{"path":"index.html"}',
+      result: "lines 1 to 400",
+    });
+
+    const secondPage = createExchange({
+      callId: "call_2",
+      toolName: "read_file",
+      argumentsJson: '{"path":"index.html","offset":401}',
+      result: "lines 401 to 800",
+    });
+
+    const replay = createExchange({
+      callId: "call_3",
+      toolName: "read_file",
+      argumentsJson: '{"path":"index.html"}',
+      result: "[read_file was asked for a third time with the same arguments. Its answer is above.]",
+      replayed: true,
+    });
+
+    generatorBrokerV1Mock.generate.mockResolvedValue(createRandomGeneration());
+    const ask = createNativeAsk("carry on", { exchanges: [firstPage, secondPage, replay] });
+
+    // when
+    await brainService.generateNatively(ask);
+
+    // then
+    // The replay is in view, so what it points back to is in view too. The page in between was
+    // not asked for again and goes the way the window says.
+    const messages = generatorBrokerV1Mock.generate.mock.calls[0]?.[0] as Array<{ role: string; content: string }>;
+    const toolMessages = messages.filter((message) => message.role === "Tool");
+
+    expect(toolMessages[0]?.content).toBe("lines 1 to 400");
+    expect(toolMessages[1]?.content).toBe("[result elided by client: 16 bytes]");
+  });
+
   it("ShouldCarryOnlyTheObservationsNoCallAccountsForAsync", async () => {
     // given
     const { generatorBrokerV1Mock, brainService } = createNativeBrainServiceTests();
