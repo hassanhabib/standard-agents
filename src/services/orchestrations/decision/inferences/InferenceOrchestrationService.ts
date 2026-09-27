@@ -1,6 +1,8 @@
 import type { LoggingBroker } from "../../../../brokers/loggings/LoggingBroker.js";
 import type { GenerationDelta } from "../../../../models/brokers/generators/v1/GenerationDelta.js";
+import type { AgentUsage } from "../../../../models/foundations/usages/AgentUsage.js";
 import type { ToolDefinition } from "../../../../models/brokers/generators/v1/ToolDefinition.js";
+import type { NativeAsk } from "../../../../models/foundations/brains/NativeAsk.js";
 import { AgentRun } from "../../../../models/loggings/AgentRun.js";
 import type { AgentContext } from "../../../../models/orchestrations/agents/AgentContext.js";
 import type { BrainService } from "../../../foundations/brains/BrainService.js";
@@ -51,7 +53,15 @@ export class InferenceOrchestrationService {
   // turn, so its answer is voiced once when it lands: later than a native brain's, and the same
   // answer. The alternative, refusing the streamed door on a text profile, would make the door a
   // property of the provider rather than of the agent.
-  public decideStream(context: AgentContext, voice: (delta: GenerationDelta) => Promise<void>): Promise<AgentContext> {
+  //
+  // spend hears what this call has spent while it is answered: the prompt the moment it is sent,
+  // and what comes back piece by piece. Always estimated, because nothing has been reported yet
+  // (SPEC.md 4.14.1, spending). The decision it reaches carries the call's settled usage as before.
+  public decideStream(
+    context: AgentContext,
+    voice: (delta: GenerationDelta) => Promise<void>,
+    spend?: (soFar: AgentUsage) => Promise<void>,
+  ): Promise<AgentContext> {
     return this.tryCatch(async () => {
       if (!this.brainService.speaksNatively) {
         const decided = await this.decideTextually(context);
@@ -61,7 +71,16 @@ export class InferenceOrchestrationService {
       }
 
       const ask = buildAsk(context, this.toolDefinitions);
-      const generation = await this.brainService.generateNativelyStream(ask, voice, stopOf());
+      const spending = await this.startSpending(ask, spend);
+
+      const generation = await this.brainService.generateNativelyStream(
+        ask,
+        async (delta) => {
+          await spending(delta);
+          await voice(delta);
+        },
+        stopOf(),
+      );
       const decided = await this.measured(interpretNatively(context, generation), whatWasSent(ask), whatCameBack(generation));
       await this.warnAboutDroppedCalls(generation.toolCalls.length, droppedCallIds(generation));
       await this.narrateDecided(decided, generation.content);
@@ -96,6 +115,34 @@ export class InferenceOrchestrationService {
     await this.narrateDecided(decided, reply.trim());
 
     return decided;
+  }
+
+  // The prompt counted once, the moment the call is sent, and heard at once: it is most of what a
+  // call costs and it has already been spent. Then each piece that comes back, counted alone and
+  // added, rather than everything so far counted again every time a piece arrives, because a file
+  // written into a call's arguments arrives in hundreds of them.
+  private async startSpending(
+    ask: NativeAsk,
+    spend: ((soFar: AgentUsage) => Promise<void>) | undefined,
+  ): Promise<(delta: GenerationDelta) => Promise<void>> {
+    if (spend === undefined) {
+      return async () => {};
+    }
+
+    const promptTokens = (await this.usageService.measure(whatWasSent(ask), "")).promptTokens;
+    let completionTokens = 0;
+    await spend({ promptTokens, completionTokens, isEstimated: true });
+
+    return async (delta) => {
+      const piece = `${delta.narration}${delta.content}${delta.written ?? ""}`;
+
+      if (piece.length === 0) {
+        return;
+      }
+
+      completionTokens += (await this.usageService.measure("", piece)).completionTokens;
+      await spend({ promptTokens, completionTokens, isEstimated: true });
+    };
   }
 
   // A model may propose several calls in one turn. The loop performs one act per turn, so the rest

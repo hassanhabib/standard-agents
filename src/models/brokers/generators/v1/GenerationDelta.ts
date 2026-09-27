@@ -6,5 +6,11 @@ import type { GenerationResult } from "./GenerationResult.js";
 export interface GenerationDelta {
   readonly content: string;
   readonly narration: string;
+
+  // What the model wrote in this frame that nobody reads: a piece of a call's arguments, or of its
+  // reasoning. Spent all the same, so it is handed up to be counted and never voiced. Absent when
+  // the frame carried none, which is almost every frame of an answer in words.
+  readonly written?: string;
+
   readonly completed: GenerationResult | null;
 }

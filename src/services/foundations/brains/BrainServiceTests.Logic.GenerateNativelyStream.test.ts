@@ -63,6 +63,31 @@ describe("BrainService native streaming", () => {
     expect(voiced).toEqual([{ content: "hello", narration: "" }]);
   });
 
+  it("ShouldHandOnWhatTheModelWritesIntoACallAsync", async () => {
+    // given
+    // Nothing in it to read, and still spent: the pieces of a call's arguments are how whoever is
+    // counting sees a model writing a file rather than a model doing nothing.
+    const { generatorBrokerV1Mock, brainService } = createNativeBrainServiceTests();
+    const completed = createGenerationResult({ content: "" });
+
+    generatorBrokerV1Mock.generateStream.mockImplementation(async function* () {
+      yield { content: "", narration: "", completed: null };
+      yield { content: "", narration: "", written: '{"path":"hat.css"', completed: null };
+      yield { content: "", narration: "", completed };
+    });
+
+    const handed: Array<string | undefined> = [];
+
+    // when
+    await brainService.generateNativelyStream(createNativeAsk("go"), async (delta) => {
+      handed.push(delta.written);
+    });
+
+    // then
+    // The empty piece that only says the stream began is still not handed on.
+    expect(handed).toEqual(['{"path":"hat.css"']);
+  });
+
   it("ShouldSayItIsWaitingOnABusyServiceBeforeAskingOnceMoreAsync", async () => {
     // given
     // A wait nobody is told about is a window that has stopped for no reason. The service said it

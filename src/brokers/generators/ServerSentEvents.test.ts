@@ -126,6 +126,35 @@ describe("ServerSentEvents", () => {
     expect(actualGeneration.finishReason).toBe("tool_calls");
   });
 
+  it("ShouldHandUpWhatTheModelWritesIntoACallAsItArrivesAsync", async () => {
+    // given
+    // A model writing a whole file into a call's arguments sends it in hundreds of pieces over a
+    // minute, none of them words anybody reads. They were absorbed without a sound, so whoever was
+    // counting what the model wrote saw nothing move until the call was finished.
+    const state = createStreamState();
+
+    // when
+    const first = applyFrame(state, '{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"write_file","arguments":"{\\"path\\":"}}]}}]}');
+    const second = applyFrame(state, '{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"hat.css\\"}"}}]}}]}');
+
+    // then
+    // Written, and not voiced: a call's arguments are not something to read out.
+    expect(first).toEqual({ content: "", narration: "", written: '{"path":', completed: null });
+    expect(second).toEqual({ content: "", narration: "", written: '"hat.css"}', completed: null });
+  });
+
+  it("ShouldHandUpAModelsReasoningAsWrittenAsync", async () => {
+    // given
+    const state = createStreamState();
+
+    // when
+    const reasoning = applyFrame(state, '{"choices":[{"delta":{"reasoning_content":"The hat goes above the head."}}]}');
+
+    // then
+    // Spent like any other token and read by nobody, so it is counted and never voiced.
+    expect(reasoning).toEqual({ content: "", narration: "", written: "The hat goes above the head.", completed: null });
+  });
+
   it("ShouldKeepTwoCallsApartByTheirIndexAsync", async () => {
     // given
     const state = createStreamState();

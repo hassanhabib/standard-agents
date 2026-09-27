@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createPromptRequest } from "../../../models/clients/agents/PromptRequest.js";
+import type { AgentUsage } from "../../../models/foundations/usages/AgentUsage.js";
 import {
   actedResponse,
   actedTool,
@@ -43,6 +44,52 @@ describe("RunManagementService usage as it is spent", () => {
     // second.
     expect(events.filter((event) => event.type === "Usage")).toEqual([
       { type: "Usage", content: "5", usage: { promptTokens: 3, completionTokens: 2, isEstimated: true } },
+      { type: "Usage", content: "10", usage: { promptTokens: 6, completionTokens: 4, isEstimated: true } },
+    ]);
+  });
+
+  it("ShouldSayWhatTheRunIsSpendingWhileACallIsAnsweredAsync", async () => {
+    // given
+    // A call can take minutes, and its usage arrives only when it ends. Spending is the count while
+    // it is answered: the run's settled total so far, plus this call's own estimate of what it sent
+    // and what has come back (SPEC.md 4.14.1, spending).
+    const { dataCoordinationServiceMock, decisionCoordinationServiceMock, directionCoordinationServiceMock, runManagementService } =
+      createRunManagementServiceTests();
+
+    const { events, emit } = collectEvents();
+    dataCoordinationServiceMock.retrieveRemoteTools.mockResolvedValue([]);
+    dataCoordinationServiceMock.recall.mockImplementation(async (context) => recalled(context));
+
+    decisionCoordinationServiceMock.thinkStream
+      .mockImplementationOnce(async (context, _voice, spend: (soFar: AgentUsage) => Promise<void>) => {
+        await spend({ promptTokens: 50, completionTokens: 0, isEstimated: true });
+
+        return thoughtTool(context, "read_file", "platformer.html");
+      })
+      .mockImplementationOnce(async (context, _voice, spend: (soFar: AgentUsage) => Promise<void>) => {
+        await spend({ promptTokens: 60, completionTokens: 0, isEstimated: true });
+        await spend({ promptTokens: 60, completionTokens: 10, isEstimated: true });
+        await spend({ promptTokens: 60, completionTokens: 30, isEstimated: true });
+
+        return thoughtAnswer(context, createRandomString());
+      });
+
+    directionCoordinationServiceMock.act
+      .mockImplementationOnce(async (context) => actedTool(context, createRandomString()))
+      .mockImplementationOnce(async (context) => actedResponse(context));
+
+    // when
+    await runManagementService.runStreamed(createPromptRequest(createRandomString()), emit);
+
+    // then
+    // The prompt is said the moment the call is sent. After that, a piece is said once it has
+    // moved the count by 25 or more, so a file written a few characters at a time is not a
+    // thousand events, and a count that moved by ten waits for the next one.
+    expect(events.filter((event) => event.type === "Spending" || event.type === "Usage")).toEqual([
+      { type: "Spending", content: "50", usage: { promptTokens: 50, completionTokens: 0, isEstimated: true } },
+      { type: "Usage", content: "5", usage: { promptTokens: 3, completionTokens: 2, isEstimated: true } },
+      { type: "Spending", content: "65", usage: { promptTokens: 63, completionTokens: 2, isEstimated: true } },
+      { type: "Spending", content: "95", usage: { promptTokens: 63, completionTokens: 32, isEstimated: true } },
       { type: "Usage", content: "10", usage: { promptTokens: 6, completionTokens: 4, isEstimated: true } },
     ]);
   });

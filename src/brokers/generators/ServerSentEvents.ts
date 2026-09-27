@@ -105,6 +105,7 @@ function nextBoundary(buffer: string): { index: number; length: number } | null 
 interface WireDelta {
   readonly content?: string | null;
   readonly narration?: string | null;
+  readonly reasoning_content?: string | null;
   readonly tool_calls?: ReadonlyArray<{
     readonly index?: number;
     readonly id?: string;
@@ -162,6 +163,15 @@ export function applyFrame(state: StreamState, payload: string): GenerationDelta
   const content = delta.content ?? "";
   const narration = delta.narration ?? "";
   state.content += content;
+
+  // What the model wrote that nobody reads, handed up so it can be counted as it arrives: a
+  // model writing a whole file into a call's arguments spends a minute on it, and absorbed without
+  // a sound it looked like a model doing nothing.
+  const written = `${delta.reasoning_content ?? ""}${(delta.tool_calls ?? []).map((call) => call.function?.arguments ?? "").join("")}`;
+
+  if (written.length > 0) {
+    return { content, narration, written, completed: null };
+  }
 
   return content.length === 0 && narration.length === 0 ? null : { content, narration, completed: null };
 }
