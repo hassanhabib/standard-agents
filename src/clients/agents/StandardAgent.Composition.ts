@@ -90,6 +90,7 @@ export function compose(configuration: AgentConfiguration): RunManagementService
         logging,
         configuration.generatorBrokerV1,
         createNativeOptions({ elisionWindow: configuration.elisionWindow }),
+        time,
       ),
       new UsageService(configuration.usageBroker ?? new RatioUsageBroker(), logging),
       logging,

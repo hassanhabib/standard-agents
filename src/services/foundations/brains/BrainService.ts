@@ -1,6 +1,8 @@
 import type { GeneratorBroker } from "../../../brokers/generators/GeneratorBroker.js";
 import type { GeneratorBrokerV1 } from "../../../brokers/generators/GeneratorBrokerV1.js";
 import type { LoggingBroker } from "../../../brokers/loggings/LoggingBroker.js";
+import { SystemTimeBroker } from "../../../brokers/times/SystemTimeBroker.js";
+import type { TimeBroker } from "../../../brokers/times/TimeBroker.js";
 import type { ResolvedInference } from "../../../models/brokers/generators/ResolvedInference.js";
 import type { ConversationMessage } from "../../../models/brokers/generators/v1/ConversationMessage.js";
 import type { GenerationDelta } from "../../../models/brokers/generators/v1/GenerationDelta.js";
@@ -24,6 +26,7 @@ export class BrainService {
   private readonly loggingBroker: LoggingBroker;
   private readonly generatorBrokerV1: GeneratorBrokerV1 | null;
   private readonly options: NativeOptions;
+  private readonly timeBroker: TimeBroker;
   private readonly tryCatch: TryCatch;
 
   public constructor(
@@ -31,11 +34,13 @@ export class BrainService {
     loggingBroker: LoggingBroker,
     generatorBrokerV1: GeneratorBrokerV1 | null = null,
     options: NativeOptions = createNativeOptions(),
+    timeBroker: TimeBroker = new SystemTimeBroker(),
   ) {
     this.generatorBroker = generatorBroker;
     this.loggingBroker = loggingBroker;
     this.generatorBrokerV1 = generatorBrokerV1;
     this.options = options;
+    this.timeBroker = timeBroker;
     this.tryCatch = createTryCatch(this.loggingBroker);
   }
 
