@@ -4,6 +4,20 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.14.1]
+
+### Fixed
+
+- **A native call the provider said nothing about is counted, not taken as free.** The global
+  network answers a streamed turn with no usage frame, and the native protocol took every such call
+  as costing nothing, marked reported: the window showed "0 tokens" a minute into a run that had
+  made three calls, and a token budget on that run bounded nothing. SPEC.md 3.4 requires a count
+  where there is no report, and the text protocol has made one since 1.1. Both native doors now
+  count what they sent (instructions, conversation, calls, observations, prompt and offered tools)
+  and what came back (words, narration and calls), marked estimated. A provider's own report still
+  wins whenever there is one. `Standard.Agents` has counted this way since it gained the native
+  protocol.
+
 ## [0.14.0]
 
 Tracks SPEC v1.15, section 4.14.1, as `Standard.Agents` 4.0.0.0 does.
