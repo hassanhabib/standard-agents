@@ -87,6 +87,9 @@ export class AgentRun {
 
   public recordPerformed(effect: PerformedEffect): void {
     this.performed.push(effect);
+
+    // An act that ran is not a repeat, whatever came before it.
+    this.latestAskReplays = 0;
   }
 
   // How many times the ledger has answered the most recent ask that reached it, or zero when that
