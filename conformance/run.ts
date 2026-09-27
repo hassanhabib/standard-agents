@@ -8,7 +8,8 @@
 // its real seams, the outcome and the tools' own records, never off to the side.
 //
 // Sprint 1 wired the Core fields; SPEC v1.14 added what a tool declares about itself, the
-// repetition bound, and how a run ended. A vector carrying a setup or expectation field this
+// repetition bound, and how a run ended; SPEC v1.15 added the streamed door and what a run spent,
+// read off the stream as it went. A vector carrying a setup or expectation field this
 // runner does not yet honor fails as unsupported, so a profile is never claimed on a vector
 // half-run.
 
@@ -16,7 +17,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { StandardAgent, type AgentOutcome, type GeneratorBroker, type RiskLevel, type Tool } from "@hassanhabib/standard-agents";
+import { StandardAgent, type AgentOutcome, type AgentStreamEvent, type GeneratorBroker, type RiskLevel, type Tool } from "@hassanhabib/standard-agents";
 
 interface Vector {
   readonly name: string;
@@ -32,6 +33,7 @@ interface Vector {
   readonly toolScopeFirstWord?: readonly string[];
   readonly identicalCallLimit?: number;
   readonly request?: Readonly<Record<string, unknown>>;
+  readonly streamed?: boolean;
 }
 
 interface ScriptedGenerator extends GeneratorBroker {
@@ -68,6 +70,7 @@ const SUPPORTED_SETUP_FIELDS: ReadonlySet<string> = new Set([
   "toolScopeFirstWord",
   "identicalCallLimit",
   "request",
+  "streamed",
 ]);
 
 const SUPPORTED_EXPECTATIONS: ReadonlySet<string> = new Set([
@@ -79,6 +82,8 @@ const SUPPORTED_EXPECTATIONS: ReadonlySet<string> = new Set([
   "status",
   "failureCode",
   "brainSees",
+  "usageEvents",
+  "usageEstimated",
 ]);
 
 const referenceRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "reference", "conformance");
@@ -148,8 +153,14 @@ function unsupportedFields(vector: Vector): string[] {
   return [...setup, ...request, ...expectations.map((key) => `expect.${key}`)];
 }
 
-function assertExpectations(vector: Vector, outcome: AgentOutcome, tools: readonly StubTool[], brainInputs: readonly string[]): string[] {
-  const failures: string[] = [];
+function assertExpectations(
+  vector: Vector,
+  outcome: AgentOutcome,
+  tools: readonly StubTool[],
+  brainInputs: readonly string[],
+  events: readonly AgentStreamEvent[],
+): string[] {
+  const failures: string[] = [...usageFailures(vector, events)];
   const expected = vector.expect;
   const toolByName = new Map(tools.map((tool) => [tool.name, tool]));
 
@@ -212,6 +223,59 @@ function assertExpectations(vector: Vector, outcome: AgentOutcome, tools: readon
   return failures;
 }
 
+// Usage as it is spent, read from the streamed events themselves (SPEC.md 4.14.1): one event per
+// model call, each carrying the run's total so far as a record and as its text, a total that grows
+// with every call, and marked estimated when nobody reported it.
+//
+// Not the numbers themselves. Every implementation counts in its own way where the provider says
+// nothing, so a vector that pinned a figure would certify a tokenizer rather than the stream.
+function usageFailures(vector: Vector, events: readonly AgentStreamEvent[]): string[] {
+  const expectedCount = vector.expect["usageEvents"];
+  const expectedEstimate = vector.expect["usageEstimated"];
+
+  if (expectedCount === undefined && expectedEstimate === undefined) {
+    return [];
+  }
+
+  if (vector.streamed !== true) {
+    return ["usage expectations require \"streamed\": true; the batched door produces and discards its events"];
+  }
+
+  const usages = events.filter((event) => event.type === "Usage");
+
+  if (typeof expectedCount === "number" && usages.length !== expectedCount) {
+    return [`usageEvents: the stream carried ${String(usages.length)} Usage event(s), expected ${String(expectedCount)}, one after every model call`];
+  }
+
+  let previousTotal = 0;
+
+  for (const usage of usages) {
+    if (usage.usage === undefined) {
+      return [`usage: a Usage event carried no record; its text was ${JSON.stringify(usage.content)}`];
+    }
+
+    const total = usage.usage.promptTokens + usage.usage.completionTokens;
+
+    if (usage.content !== String(total)) {
+      return [`usage: a Usage event's text was ${JSON.stringify(usage.content)} while its record totals ${String(total)}`];
+    }
+
+    if (total <= previousTotal) {
+      return [`usage: the running total went from ${String(previousTotal)} to ${String(total)}; every model call spends something, so the total grows`];
+    }
+
+    previousTotal = total;
+  }
+
+  const last = usages.at(-1);
+
+  if (typeof expectedEstimate === "boolean" && last !== undefined && last.usage?.isEstimated !== expectedEstimate) {
+    return [`usageEstimated: the last Usage event said estimated=${String(last.usage?.isEstimated)}, expected ${String(expectedEstimate)}`];
+  }
+
+  return [];
+}
+
 async function runVector(vector: Vector): Promise<VectorResult> {
   const unsupported = unsupportedFields(vector);
 
@@ -239,8 +303,15 @@ async function runVector(vector: Vector): Promise<VectorResult> {
   }
 
   try {
-    const outcome = await agent.runAsync(vector.prompt);
-    const failures = assertExpectations(vector, outcome, tools, generator.inputs);
+    // A streamed vector is driven through the streamed door, and what that door yielded is kept,
+    // because some guarantees are only observable on the stream itself.
+    const events: AgentStreamEvent[] = [];
+
+    const outcome = vector.streamed === true
+      ? await agent.runStream(vector.prompt, async (event) => { events.push(event); })
+      : await agent.runAsync(vector.prompt);
+
+    const failures = assertExpectations(vector, outcome, tools, generator.inputs, events);
 
     return failures.length === 0
       ? { vector, passed: true, detail: `${outcome.status}: ${firstLine(outcome.result)}` }

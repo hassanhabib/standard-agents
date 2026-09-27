@@ -172,6 +172,13 @@ export function collectEvents(): { events: AgentStreamEvent[]; emit: (event: Age
   return { events, emit: async (event) => { events.push(event); } };
 }
 
+// Every event but what the run spent. A test about which acts a run voiced and in what order is not
+// about the count that follows every model call (SPEC.md 4.14.1), and pinning where that count
+// lands in the list would break each of them the next time the stream honestly grows.
+export function withoutUsage(events: readonly AgentStreamEvent[]): AgentStreamEvent[] {
+  return events.filter((event) => event.type !== "Usage");
+}
+
 interface ExceptionShape {
   readonly name: string;
   readonly message: string;
