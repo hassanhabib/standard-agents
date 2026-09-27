@@ -24,6 +24,7 @@ export class AgentRun {
   private readonly verdicts = new Map<string, string>();
   private readonly grants = new Set<string>();
   private readonly performed: PerformedEffect[] = [];
+  private latestAskReplays = 0;
   private sequence = 0;
   private processIndex = 0;
 
@@ -85,6 +86,12 @@ export class AgentRun {
 
   public recordPerformed(effect: PerformedEffect): void {
     this.performed.push(effect);
+  }
+
+  // How many times the ledger has answered the most recent ask that reached it, or zero when that
+  // ask was performed. What a repetition bound reads between turns (SPEC.md 4.10, v1.14).
+  public get replaysOfLatestAsk(): number {
+    return this.latestAskReplays;
   }
 
   // How many acts this run has performed on a scope that were not Safe: what a look at that scope

@@ -339,6 +339,29 @@ describe("DirectionCoordinationService act logic", () => {
     verifyNoOtherCalls(executionOrchestrationServiceMock, { run: 2 });
   });
 
+  it("ShouldCountTheReplaysOfTheLatestAskOnTheRunWithoutACallIdAsync", async () => {
+    // given
+    // The same ask twice more after it ran, on the text protocol: no call ids, so no exchange says
+    // "replayed", and a loop that counted only exchanges never saw a text-protocol run going in
+    // circles. Watched in both implementations. The run is what every protocol shares.
+    const { perimeterOrchestrationServiceMock, directionCoordinationService } = createDirectionCoordinationServiceTests();
+
+    const context = toolContext();
+    perimeterOrchestrationServiceMock.authorize.mockResolvedValue(allow());
+    perimeterOrchestrationServiceMock.claim.mockResolvedValue({ verdict: "Replay", outcome: createRandomString(), record: null });
+
+    // when
+    const actualReplays = await AgentRun.begin(null, undefined, async () => {
+      await directionCoordinationService.act(context);
+      await directionCoordinationService.act(context);
+
+      return AgentRun.current()?.replaysOfLatestAsk ?? 0;
+    });
+
+    // then
+    expect(actualReplays).toBe(2);
+  });
+
   it("ShouldMarkAReplayedExchangeAsAReplayAsync", async () => {
     // given
     const { perimeterOrchestrationServiceMock, directionCoordinationService } = createDirectionCoordinationServiceTests();
