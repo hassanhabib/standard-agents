@@ -9,6 +9,7 @@ import { FaultedBrainException } from "../../../models/foundations/brains/except
 import { FailedBrainDependencyException } from "../../../models/foundations/brains/exceptions/FailedBrainDependencyException.js";
 import { FailedBrainServiceException } from "../../../models/foundations/brains/exceptions/FailedBrainServiceException.js";
 import { InvalidBrainException } from "../../../models/foundations/brains/exceptions/InvalidBrainException.js";
+import { MalformedBrainReplyException } from "../../../models/foundations/brains/exceptions/MalformedBrainReplyException.js";
 import { NotFoundBrainException } from "../../../models/foundations/brains/exceptions/NotFoundBrainException.js";
 import { RefusedBrainException } from "../../../models/foundations/brains/exceptions/RefusedBrainException.js";
 import { RejectedBrainException } from "../../../models/foundations/brains/exceptions/RejectedBrainException.js";
@@ -89,6 +90,19 @@ export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
           loggingBroker,
           new NotFoundBrainException(
             "nothing at that address answers chat requests (404). Check the address, and that the model it names is installed there.",
+            error,
+          ),
+        );
+      }
+
+      // Something answered, and what it sent is not JSON: a page of HTML, most often, from a web
+      // server or a proxy at an address that is not a model service. The parser's complaint about
+      // a '<' is what reached people before, which tells them nothing about the address.
+      if (error instanceof SyntaxError) {
+        throw await createAndLogDependencyException(
+          loggingBroker,
+          new MalformedBrainReplyException(
+            "the reply was not what a model service sends. Check that the address points at an OpenAI-compatible API.",
             error,
           ),
         );
