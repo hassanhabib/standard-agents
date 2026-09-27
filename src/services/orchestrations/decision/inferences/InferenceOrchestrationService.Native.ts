@@ -132,3 +132,33 @@ export function interpretNatively(context: AgentContext, generation: GenerationR
 export function droppedCallIds(generation: GenerationResult): readonly string[] {
   return generation.toolCalls.slice(1).map((call) => call.id);
 }
+
+// Everything a native call put in front of the model, as text to count when the provider did not
+// say what it cost: the instructions, the conversation and the calls in it, what this run observed,
+// the prompt, and the tools it was offered, whose schemas are prompt as much as anything else is.
+export function whatWasSent(ask: NativeAsk): string {
+  const exchanges = (all: NativeAsk["exchanges"]): string[] =>
+    all.flatMap((exchange) => [exchange.assistantContent ?? "", exchange.toolName, exchange.argumentsJson, exchange.result]);
+
+  return [
+    ask.systemPrompt,
+    ...ask.history.flatMap((turn) => [turn.prompt, ...exchanges(turn.exchanges), turn.answer]),
+    ...exchanges(ask.exchanges),
+    ...ask.observations,
+    ask.prompt,
+    ...ask.tools.flatMap((tool) => [tool.name, tool.description, tool.parametersJson]),
+  ]
+    .filter((part) => part.length > 0)
+    .join("\n");
+}
+
+// Everything the model wrote back: its words, its narration, and each call with its arguments.
+export function whatCameBack(generation: GenerationResult): string {
+  return [
+    generation.narration,
+    generation.content,
+    ...generation.toolCalls.flatMap((call) => [call.name, call.argumentsJson]),
+  ]
+    .filter((part) => part.length > 0)
+    .join("\n");
+}

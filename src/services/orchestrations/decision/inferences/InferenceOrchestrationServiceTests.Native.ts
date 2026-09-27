@@ -31,7 +31,9 @@ export function createNativeInferenceTests(toolDefinitions: readonly ToolDefinit
     generateNatively: vi.fn(),
     generateNativelyStream: vi.fn(),
   };
-  const usageServiceMock: UsageServiceMock = { measure: vi.fn() };
+  // Counts what it is handed, the way the real one does, so a test about something else is not a
+  // test of a counter that answers nothing.
+  const usageServiceMock: UsageServiceMock = { measure: vi.fn(async () => ({ promptTokens: 1, completionTokens: 1, isEstimated: true })) };
   const loggingBrokerMock = createLoggingBrokerMock();
 
   const inferenceOrchestrationService = new InferenceOrchestrationService(
