@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createGenerationResult } from "../../../brokers/generators/FunctionGeneratorBrokerV1.js";
 import { HttpResponseException } from "../../../models/brokers/https/HttpResponseException.js";
+import { BrainDependencyException } from "../../../models/foundations/brains/exceptions/BrainDependencyException.js";
 import { BrainServiceException } from "../../../models/foundations/brains/exceptions/BrainServiceException.js";
 import { createNativeAsk } from "../../../models/foundations/brains/NativeAsk.js";
 import { createRandomString } from "./BrainServiceTests.js";
@@ -74,6 +75,41 @@ describe("BrainService native streaming", () => {
     ]);
   });
 
+  it("ShouldGiveUpWhenNothingArrivesWithinTheFirstThirtySecondsAsync", async () => {
+    // given
+    // A service that takes the request and says nothing back leaves a window spinning for as long
+    // as the platform's own timeout, which is minutes. Thirty seconds without a first piece is
+    // long enough that waiting longer is a guess. The clock here gives up at once, the way the
+    // real one does after thirty seconds, and the request is cut short the way fetch is.
+    const { generatorBrokerV1Mock, timeBrokerMock, brainService } = createNativeBrainServiceTests();
+
+    generatorBrokerV1Mock.generateStream.mockImplementation(async function* (
+      _messages: unknown,
+      _tools: unknown,
+      _inference: unknown,
+      signal?: AbortSignal,
+    ) {
+      await new Promise((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(new DOMException("This operation was aborted", "AbortError")));
+      });
+
+      yield { content: "never", narration: "", completed: null };
+    });
+
+    // when
+    const raised = await brainService.generateNativelyStream(createNativeAsk("go"), async () => {}).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    // then
+    expect(timeBrokerMock.delay).toHaveBeenCalledWith(30_000, expect.any(AbortSignal));
+    expect(raised).toBeInstanceOf(BrainDependencyException);
+    expect(innermostMessageOf(raised)).toBe(
+      "the model service did not start answering within 30 seconds. Check that it is running and not overloaded.",
+    );
+  });
+
   it("ShouldClimbDownBeforeStreamingWhenTheConversationWouldNotFitAsync", async () => {
     // given
     const { generatorBrokerV1Mock, loggingBrokerMock, brainService } = createNativeBrainServiceTests({
@@ -128,3 +164,15 @@ describe("BrainService native streaming", () => {
   });
 
 });
+
+// The message a door reads: the bottom of the chain, where the sentence written for a person is.
+function innermostMessageOf(error: unknown): string {
+  let said = "";
+
+  for (let at = error as { message?: string; innerError?: unknown } | null | undefined; at !== null && at !== undefined; ) {
+    said = (at.message ?? "").trim() || said;
+    at = at.innerError as { message?: string; innerError?: unknown } | null | undefined;
+  }
+
+  return said;
+}
