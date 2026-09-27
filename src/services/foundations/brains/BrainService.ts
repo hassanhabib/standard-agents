@@ -120,7 +120,7 @@ export class BrainService {
           }
 
           return completed;
-        }, signal),
+        }, signal, async (sentence) => await voice({ content: "", narration: sentence, completed: null })),
       );
     });
   }
@@ -167,7 +167,14 @@ export class BrainService {
   // chose. A service that is still busy the second time is reported, with its wait, by the
   // exception partial. A status arrives before the first frame of a stream, so nothing said is
   // ever said twice.
-  private async onceMoreIfBusy<T>(send: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  //
+  // Said before the pause to whoever is watching, when somebody is: a wait nobody is told about is
+  // a window that has stopped for no reason.
+  private async onceMoreIfBusy<T>(
+    send: () => Promise<T>,
+    signal?: AbortSignal,
+    announce: (sentence: string) => Promise<void> = async () => {},
+  ): Promise<T> {
     try {
       return await send();
     } catch (error: unknown) {
@@ -181,6 +188,10 @@ export class BrainService {
         "Decision",
         `Brain -> the service is busy (${String(error.status)}); asking once more in ${String(seconds)} s`,
         true,
+      );
+
+      await announce(
+        `The model service is busy (${String(error.status)}), so I am trying again in ${String(seconds)} ${seconds === 1 ? "second" : "seconds"}.`,
       );
 
       await this.timeBroker.delay(seconds * 1_000, signal);
