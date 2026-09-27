@@ -102,12 +102,20 @@ describe("BrainService native streaming", () => {
     ]);
   });
 
-  it("ShouldGiveUpWhenNothingArrivesWithinTheFirstThirtySecondsAsync", async () => {
+  it("ShouldGiveUpWhenNothingArrivesWithinFourMinutesAsync", async () => {
     // given
-    // A service that takes the request and says nothing back leaves a window spinning for as long
-    // as the platform's own timeout, which is minutes. Thirty seconds without a first piece is
-    // long enough that waiting longer is a guess. The clock here gives up at once, the way the
-    // real one does after thirty seconds, and the request is cut short the way fetch is.
+    // A service that takes the request and says nothing back leaves a window spinning until the
+    // platform's own timeout, five minutes, and then says "nothing answered", which is not true.
+    //
+    // Not thirty seconds. Watched on a Host on the local network: it sends nothing, not even its
+    // headers, until the whole answer is ready, and a coding turn with forty messages behind it
+    // took longer than thirty seconds to be ready. Every turn failed with "did not start
+    // answering" on a Host that was working. A Host that has not answered cannot be told from a
+    // Host that is busy writing, so the wait is long enough for a buffered turn and short enough
+    // to be told before the platform gives up with a sentence that is wrong.
+    //
+    // The clock here gives up at once, the way the real one does after four minutes, and the
+    // request is cut short the way fetch is.
     const { generatorBrokerV1Mock, timeBrokerMock, brainService } = createNativeBrainServiceTests();
 
     generatorBrokerV1Mock.generateStream.mockImplementation(async function* (
@@ -130,10 +138,10 @@ describe("BrainService native streaming", () => {
     );
 
     // then
-    expect(timeBrokerMock.delay).toHaveBeenCalledWith(30_000, expect.any(AbortSignal));
+    expect(timeBrokerMock.delay).toHaveBeenCalledWith(240_000, expect.any(AbortSignal));
     expect(raised).toBeInstanceOf(BrainDependencyException);
     expect(innermostMessageOf(raised)).toBe(
-      "the model service did not start answering within 30 seconds. Check that it is running and not overloaded.",
+      "the model service did not answer within 4 minutes. Check that it is running and not overloaded.",
     );
   });
 
