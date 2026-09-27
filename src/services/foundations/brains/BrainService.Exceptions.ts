@@ -7,6 +7,7 @@ import { BrainValidationException } from "../../../models/foundations/brains/exc
 import { FailedBrainDependencyException } from "../../../models/foundations/brains/exceptions/FailedBrainDependencyException.js";
 import { FailedBrainServiceException } from "../../../models/foundations/brains/exceptions/FailedBrainServiceException.js";
 import { InvalidBrainException } from "../../../models/foundations/brains/exceptions/InvalidBrainException.js";
+import { NotFoundBrainException } from "../../../models/foundations/brains/exceptions/NotFoundBrainException.js";
 import { RefusedBrainException } from "../../../models/foundations/brains/exceptions/RefusedBrainException.js";
 import { UnreachableBrainException } from "../../../models/foundations/brains/exceptions/UnreachableBrainException.js";
 
@@ -18,7 +19,6 @@ import { UnreachableBrainException } from "../../../models/foundations/brains/ex
 
 export type TryCatch = <T>(routine: () => Promise<T>) => Promise<T>;
 
-const CRITICAL_STATUSES = new Set([401, 403, 404]);
 const REFUSED_STATUSES = new Set([401, 403]);
 
 export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
@@ -53,8 +53,16 @@ export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
         );
       }
 
-      if (error instanceof HttpResponseException && CRITICAL_STATUSES.has(error.status)) {
-        throw await createAndLogCriticalDependencyException(loggingBroker, error);
+      // Something answered at that address and it is not a chat endpoint, or the model is not
+      // installed there. Configuration, so critical, and said as the two things to check.
+      if (error instanceof HttpResponseException && error.status === 404) {
+        throw await createAndLogCriticalDependencyException(
+          loggingBroker,
+          new NotFoundBrainException(
+            "nothing at that address answers chat requests (404). Check the address, and that the model it names is installed there.",
+            error,
+          ),
+        );
       }
 
       // Nothing answered at all, which is what fetch raises a TypeError for. Localised here rather
