@@ -236,7 +236,7 @@ describe("DirectionCoordinationService act logic", () => {
     // the thing that was not working: it is the bytes it was looking at when it decided to ask
     // again, and every copy costs the person a turn's worth of context. The run itself goes on,
     // because whether a run that keeps asking should end is the loop's contract to decide, and the
-    // contract says the turn cap decides it.
+    // repetition bound decides it between turns.
     expect(actualContext.status).toBe("Working");
     expect(actualContext.result).toContain("third time");
     expect(actualContext.result).not.toContain(outcome);

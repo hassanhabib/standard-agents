@@ -84,8 +84,8 @@ export function alreadyReplayed(context: AgentContext, toolName: string, outcome
 // worth of context. Not the outcome again: the model has had it twice, and a third copy is the bytes
 // it was looking at when it decided to ask again.
 //
-// The run goes on. Whether a run that keeps asking should end is the loop's contract to decide, and
-// the contract says the turn cap decides it (SPEC.md 4.9, conformance 06 and 17).
+// The run goes on here. Whether a run that keeps asking should end is the loop's contract to
+// decide, and the repetition bound decides it between turns (SPEC.md 4.10, v1.14).
 export function replayedAgain(toolName: string): string {
   return (
     `[${toolName} was asked for a third time with the same arguments. Its answer is above, from the ` +

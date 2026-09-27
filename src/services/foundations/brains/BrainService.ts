@@ -58,7 +58,7 @@ export class BrainService {
   }
 
   // The native turn: the conversation built from what the run knows, sent through the ladder that
-  // gives things up in order until it fits or there is nothing left to give (SPEC.md 10.3, 17.1).
+  // gives things up in order until it fits or there is nothing left to give (SPEC.md 6.2).
   public generateNatively(ask: NativeAsk, signal?: AbortSignal): Promise<GenerationResult> {
     return this.tryCatch(async () => {
       validateUserPrompt(ask.prompt);
@@ -116,7 +116,7 @@ export class BrainService {
     });
   }
 
-  // The degradation ladder, walked once for whichever way the turn is being asked (SPEC.md 10.3).
+  // The degradation ladder, walked once for whichever way the turn is being asked (SPEC.md 6.2).
   // Both doors climb the same rungs, so a streamed run and a batched one give up the same things
   // in the same order and neither can quietly be more generous than the other.
   private async overLadder<T>(ask: NativeAsk, send: (messages: readonly ConversationMessage[]) => Promise<T>): Promise<T> {
