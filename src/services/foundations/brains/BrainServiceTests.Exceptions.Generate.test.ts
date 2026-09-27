@@ -206,7 +206,8 @@ describe("BrainService generate exceptions", () => {
       expectSameExceptionAs(actualException, expectedBrainDependencyException);
       expectSameExceptionAs(loggingBrokerMock.logError.mock.calls[0]?.[0], expectedBrainDependencyException);
       expect(innermostMessageOf(actualException)).toBe(busyBrainException.message);
-      verifyNoOtherCalls(loggingBrokerMock, { logError: 1 });
+      // Asked once more after the wait before being reported, which is the one extra line in the log.
+      verifyNoOtherCalls(loggingBrokerMock, { logError: 1, logProcess: 1 });
     },
   );
 
@@ -246,7 +247,9 @@ describe("BrainService generate exceptions", () => {
       expectSameExceptionAs(actualException, expectedBrainDependencyException);
       expectSameExceptionAs(loggingBrokerMock.logError.mock.calls[0]?.[0], expectedBrainDependencyException);
       expect(innermostMessageOf(actualException)).toBe(unavailableBrainException.message);
-      verifyNoOtherCalls(loggingBrokerMock, { logError: 1 });
+
+      // A 503 is asked once more after the wait; the gateways and a 408 are reported at once.
+      verifyNoOtherCalls(loggingBrokerMock, { logError: 1, logProcess: status === 503 ? 1 : 0 });
     },
   );
 
