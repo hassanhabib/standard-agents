@@ -37,7 +37,7 @@ export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
 
       if (error instanceof HttpResponseException && error.status === 400) {
         const invalidBrainException = new InvalidBrainException(
-          "Invalid brain request. Please correct the error and try again.",
+          `the model service could not accept the request (400)${becauseOf(error.body)}`,
         );
 
         invalidBrainException.upsertDataList("status", String(error.status));
