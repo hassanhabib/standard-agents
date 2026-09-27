@@ -9,6 +9,7 @@ import { FaultedBrainException } from "../../../models/foundations/brains/except
 import { FailedBrainDependencyException } from "../../../models/foundations/brains/exceptions/FailedBrainDependencyException.js";
 import { FailedBrainServiceException } from "../../../models/foundations/brains/exceptions/FailedBrainServiceException.js";
 import { InvalidBrainException } from "../../../models/foundations/brains/exceptions/InvalidBrainException.js";
+import { MalformedBrainReplyException } from "../../../models/foundations/brains/exceptions/MalformedBrainReplyException.js";
 import { NotFoundBrainException } from "../../../models/foundations/brains/exceptions/NotFoundBrainException.js";
 import { RefusedBrainException } from "../../../models/foundations/brains/exceptions/RefusedBrainException.js";
 import { RejectedBrainException } from "../../../models/foundations/brains/exceptions/RejectedBrainException.js";
@@ -324,6 +325,37 @@ describe("BrainService generate exceptions", () => {
       verifyNoOtherCalls(loggingBrokerMock, { logError: 1 });
     },
   );
+
+  it("ShouldThrowDependencyExceptionOnGenerateIfTheReplyIsNotWhatAModelServiceSendsAndSayItLastAsync", async () => {
+    // given
+    // A 200 that is a page of HTML: the address points at a web page or a proxy, not a model
+    // service. What reached whoever was waiting was the JSON parser's complaint about a '<'.
+    const { generatorBrokerMock, loggingBrokerMock, brainService } = createBrainServiceTests();
+    const syntaxError = new SyntaxError(`Unexpected token '<', "<!DOCTYPE "... is not valid JSON`);
+
+    const malformedBrainReplyException = new MalformedBrainReplyException(
+      "the reply was not what a model service sends. Check that the address points at an OpenAI-compatible API.",
+      syntaxError,
+    );
+
+    const expectedBrainDependencyException = new BrainDependencyException(
+      "Brain dependency error occurred, contact support.",
+      new FailedBrainDependencyException("Failed brain dependency error occurred, contact support.", malformedBrainReplyException),
+    );
+
+    generatorBrokerMock.generate.mockRejectedValue(syntaxError);
+
+    // when
+    const generateTask = brainService.generate(createRandomString(), createRandomString());
+
+    // then
+    const actualException = await generateTask.then(() => undefined, (error: unknown) => error);
+
+    expect(actualException).toBeInstanceOf(BrainDependencyException);
+    expectSameExceptionAs(actualException, expectedBrainDependencyException);
+    expect(innermostMessageOf(actualException)).toBe(malformedBrainReplyException.message);
+    verifyNoOtherCalls(loggingBrokerMock, { logError: 1 });
+  });
 
   it("ShouldThrowServiceExceptionOnGenerateIfServiceErrorOccursAndLogItAsync", async () => {
     // given
