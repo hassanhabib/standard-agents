@@ -44,7 +44,7 @@ export class HttpGeneratorBroker implements GeneratorBroker {
     const body = await response.text();
 
     if (!response.ok) {
-      throw new HttpResponseException(response.status, body);
+      throw new HttpResponseException(response.status, body, response.headers.get("retry-after"));
     }
 
     const completion = JSON.parse(body) as ChatCompletionResponse;

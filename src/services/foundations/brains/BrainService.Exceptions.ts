@@ -1,12 +1,20 @@
 import type { LoggingBroker } from "../../../brokers/loggings/LoggingBroker.js";
 import { HttpResponseException } from "../../../models/brokers/https/HttpResponseException.js";
+import { BusyBrainException } from "../../../models/foundations/brains/exceptions/BusyBrainException.js";
 import { BrainDependencyException } from "../../../models/foundations/brains/exceptions/BrainDependencyException.js";
 import { BrainDependencyValidationException } from "../../../models/foundations/brains/exceptions/BrainDependencyValidationException.js";
 import { BrainServiceException } from "../../../models/foundations/brains/exceptions/BrainServiceException.js";
 import { BrainValidationException } from "../../../models/foundations/brains/exceptions/BrainValidationException.js";
+import { FaultedBrainException } from "../../../models/foundations/brains/exceptions/FaultedBrainException.js";
 import { FailedBrainDependencyException } from "../../../models/foundations/brains/exceptions/FailedBrainDependencyException.js";
 import { FailedBrainServiceException } from "../../../models/foundations/brains/exceptions/FailedBrainServiceException.js";
 import { InvalidBrainException } from "../../../models/foundations/brains/exceptions/InvalidBrainException.js";
+import { MalformedBrainReplyException } from "../../../models/foundations/brains/exceptions/MalformedBrainReplyException.js";
+import { NotFoundBrainException } from "../../../models/foundations/brains/exceptions/NotFoundBrainException.js";
+import { RefusedBrainException } from "../../../models/foundations/brains/exceptions/RefusedBrainException.js";
+import { TimedOutBrainException } from "../../../models/foundations/brains/exceptions/TimedOutBrainException.js";
+import { RejectedBrainException } from "../../../models/foundations/brains/exceptions/RejectedBrainException.js";
+import { UnavailableBrainException } from "../../../models/foundations/brains/exceptions/UnavailableBrainException.js";
 import { UnreachableBrainException } from "../../../models/foundations/brains/exceptions/UnreachableBrainException.js";
 
 // The exception partial (SPEC-cli 3.1): the brain family's categories, each localising the
@@ -17,7 +25,8 @@ import { UnreachableBrainException } from "../../../models/foundations/brains/ex
 
 export type TryCatch = <T>(routine: () => Promise<T>) => Promise<T>;
 
-const CRITICAL_STATUSES = new Set([401, 403, 404]);
+const REFUSED_STATUSES = new Set([401, 403]);
+const UNAVAILABLE_STATUSES = new Set([408, 502, 503, 504]);
 
 export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
   return async function tryCatch<T>(routine: () => Promise<T>): Promise<T> {
@@ -30,7 +39,7 @@ export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
 
       if (error instanceof HttpResponseException && error.status === 400) {
         const invalidBrainException = new InvalidBrainException(
-          "Invalid brain request. Please correct the error and try again.",
+          `the model service could not accept the request (400)${becauseOf(error.body)}`,
         );
 
         invalidBrainException.upsertDataList("status", String(error.status));
@@ -39,8 +48,71 @@ export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
         throw await createAndLogDependencyValidationException(loggingBroker, invalidBrainException);
       }
 
-      if (error instanceof HttpResponseException && CRITICAL_STATUSES.has(error.status)) {
-        throw await createAndLogCriticalDependencyException(loggingBroker, error);
+      // The service answered, and would not take the key. Said as that, with the status beside it
+      // for whoever reads a log, rather than as the status alone.
+      if (error instanceof HttpResponseException && REFUSED_STATUSES.has(error.status)) {
+        throw await createAndLogCriticalDependencyException(
+          loggingBroker,
+          new RefusedBrainException(
+            `the model service did not accept this connection's key (${String(error.status)}). Check the key, and that it belongs to this service.`,
+            error,
+          ),
+        );
+      }
+
+      // The service said "not now", and usually said for how long. The wait it named is the one
+      // number worth giving whoever is waiting, so it is kept rather than dropped with the header.
+      if (error instanceof HttpResponseException && error.status === 429) {
+        throw await createAndLogDependencyException(
+          loggingBroker,
+          new BusyBrainException(
+            `the model service is taking too many requests right now (429). ${howLongToWait(error.retryAfter)}`,
+            error,
+          ),
+        );
+      }
+
+      // The service, or the gateway in front of it, cannot answer right now. Waiting is usually
+      // the whole remedy, so the sentence says to wait, and for how long when the service said.
+      if (error instanceof HttpResponseException && UNAVAILABLE_STATUSES.has(error.status)) {
+        throw await createAndLogDependencyException(
+          loggingBroker,
+          new UnavailableBrainException(
+            `the model service is not available right now (${String(error.status)}). ${howLongToWait(error.retryAfter)}`,
+            error,
+          ),
+        );
+      }
+
+      // Something answered at that address and it is not a chat endpoint, or the model is not
+      // installed there. Configuration, so critical, and said as the two things to check.
+      if (error instanceof HttpResponseException && error.status === 404) {
+        throw await createAndLogCriticalDependencyException(
+          loggingBroker,
+          new NotFoundBrainException(
+            "nothing at that address answers chat requests (404). Check the address, and that the model it names is installed there.",
+            error,
+          ),
+        );
+      }
+
+      // Nothing came back in time. The sentence is already written where the wait was kept; this is
+      // where it takes its category, a dependency that may pass.
+      if (error instanceof TimedOutBrainException) {
+        throw await createAndLogDependencyException(loggingBroker, error);
+      }
+
+      // Something answered, and what it sent is not JSON: a page of HTML, most often, from a web
+      // server or a proxy at an address that is not a model service. The parser's complaint about
+      // a '<' is what reached people before, which tells them nothing about the address.
+      if (error instanceof SyntaxError) {
+        throw await createAndLogDependencyException(
+          loggingBroker,
+          new MalformedBrainReplyException(
+            "the reply was not what a model service sends. Check that the address points at an OpenAI-compatible API.",
+            error,
+          ),
+        );
       }
 
       // Nothing answered at all, which is what fetch raises a TypeError for. Localised here rather
@@ -58,8 +130,28 @@ export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
         );
       }
 
+      // A fault of the service's own. Trying again may pass, and one that keeps coming back is the
+      // service's to fix rather than the person's, which is worth them knowing.
+      if (error instanceof HttpResponseException && error.status >= 500) {
+        throw await createAndLogDependencyException(
+          loggingBroker,
+          new FaultedBrainException(
+            `the model service failed while answering (${String(error.status)}). Try again; if it keeps happening, the service needs looking at.`,
+            error,
+          ),
+        );
+      }
+
+      // Every other status is the service turning this request down for a reason of its own, and
+      // the reason it gave, when it gave one in words, is the part worth reading.
       if (error instanceof HttpResponseException) {
-        throw await createAndLogDependencyException(loggingBroker, error);
+        throw await createAndLogDependencyException(
+          loggingBroker,
+          new RejectedBrainException(
+            `the model service refused the request (${String(error.status)})${becauseOf(error.body)}`,
+            error,
+          ),
+        );
       }
 
       const failedBrainServiceException = new FailedBrainServiceException(
@@ -71,6 +163,51 @@ export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
     }
   };
 }
+
+// Retry-After as a sentence. A whole number of seconds is said as that; anything else, a date or
+// nothing at all, is "a moment", because a guess dressed as a number is worse than no number.
+function howLongToWait(retryAfter: string | null): string {
+  const trimmed = (retryAfter ?? "").trim();
+
+  if (!/^\d+$/.test(trimmed)) {
+    return "Try again in a moment.";
+  }
+
+  const seconds = Number(trimmed);
+
+  return `Try again in ${String(seconds)} ${seconds === 1 ? "second" : "seconds"}.`;
+}
+
+// The service's own reason, as the end of a sentence: ": <reason>." when the body carries one in
+// words, "." when it does not. The OpenAI shape puts it at error.message; some services send a bare
+// message, and some a line of plain text. A page of HTML from a proxy is not a reason, and neither
+// is a paragraph, so both are left out rather than pasted into what somebody reads.
+function becauseOf(body: string): string {
+  const reason = reasonIn(body).trim();
+
+  if (reason.length === 0 || reason.length > MOST_A_REASON_RUNS || reason.startsWith("<")) {
+    return ".";
+  }
+
+  return /[.!?]$/.test(reason) ? `: ${reason}` : `: ${reason}.`;
+}
+
+function reasonIn(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: unknown } | unknown; message?: unknown };
+    const nested = typeof parsed.error === "object" && parsed.error !== null ? (parsed.error as { message?: unknown }).message : parsed.error;
+
+    if (typeof nested === "string") {
+      return nested;
+    }
+
+    return typeof parsed.message === "string" ? parsed.message : "";
+  } catch {
+    return body;
+  }
+}
+
+const MOST_A_REASON_RUNS = 200;
 
 async function createAndLogValidationException(
   loggingBroker: LoggingBroker,

@@ -9,7 +9,8 @@ import type { AgentTurn } from "../../../models/brokers/sessions/AgentTurn.js";
 import { createNativeOptions, type NativeOptions } from "../../../models/foundations/brains/NativeAsk.js";
 import type { ToolExchange } from "../../../models/orchestrations/agents/ToolExchange.js";
 import { BrainService } from "./BrainService.js";
-import { createLoggingBrokerMock, createRandomString, type LoggingBrokerMock } from "./BrainServiceTests.js";
+import type { TimeBroker } from "../../../brokers/times/TimeBroker.js";
+import { createLoggingBrokerMock, createRandomString, createTimeBrokerMock, type LoggingBrokerMock, type TimeBrokerMock } from "./BrainServiceTests.js";
 
 export interface GeneratorBrokerV1Mock {
   honorsRequest: boolean;
@@ -23,19 +24,22 @@ export function createNativeBrainServiceTests(
 ): {
   generatorBrokerV1Mock: GeneratorBrokerV1Mock;
   loggingBrokerMock: LoggingBrokerMock;
+  timeBrokerMock: TimeBrokerMock;
   brainService: BrainService;
 } {
   const generatorBrokerV1Mock: GeneratorBrokerV1Mock = { honorsRequest, generate: vi.fn(), generateStream: vi.fn() };
   const loggingBrokerMock = createLoggingBrokerMock();
+  const timeBrokerMock = createTimeBrokerMock();
 
   const brainService = new BrainService(
     { honorsRequest: true, generate: vi.fn() } as unknown as GeneratorBroker,
     loggingBrokerMock as unknown as LoggingBroker,
     generatorBrokerV1Mock as unknown as GeneratorBrokerV1,
     createNativeOptions(options),
+    timeBrokerMock as unknown as TimeBroker,
   );
 
-  return { generatorBrokerV1Mock, loggingBrokerMock, brainService };
+  return { generatorBrokerV1Mock, loggingBrokerMock, timeBrokerMock, brainService };
 }
 
 export function createExchange(overrides: Partial<ToolExchange> = {}): ToolExchange {

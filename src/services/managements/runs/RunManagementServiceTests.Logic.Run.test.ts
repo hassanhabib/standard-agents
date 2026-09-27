@@ -300,6 +300,35 @@ describe("RunManagementService run logic", () => {
     verifyNoOtherCalls(directionCoordinationServiceMock);
   });
 
+  it("ShouldStopAsCancelledWhenTheStopArrivesInTheMiddleOfATurnAsync", async () => {
+    // given
+    // Stop pressed while the model is answering. The request is cut short where it stands, and
+    // what came back was a failure reading "This operation was aborted", with an offer to try the
+    // same thing elsewhere: a stop somebody asked for, told to them as something that went wrong.
+    const { dataCoordinationServiceMock, decisionCoordinationServiceMock, runManagementService } = createRunManagementServiceTests();
+    const expectedMessage = "The request was cancelled before it completed.";
+    const controller = new AbortController();
+    dataCoordinationServiceMock.retrieveRemoteTools.mockResolvedValue([]);
+    dataCoordinationServiceMock.recall.mockImplementation(async (context) => recalled(context));
+
+    decisionCoordinationServiceMock.think.mockImplementation(async () => {
+      controller.abort();
+
+      throw new DOMException("This operation was aborted", "AbortError");
+    });
+
+    // when
+    const actualOutcome = await runManagementService.run(createPromptRequest(createRandomString()), controller.signal);
+
+    // then
+    expect(actualOutcome).toEqual({
+      result: expectedMessage,
+      status: "Failed",
+      pendingEffect: null,
+      failure: { category: "Service", code: "cancelled", message: expectedMessage },
+    });
+  });
+
   it("ShouldStopWhenTheTokenBudgetIsExhaustedAsync", async () => {
     // given
     const { dataCoordinationServiceMock, decisionCoordinationServiceMock, directionCoordinationServiceMock, runManagementService } =

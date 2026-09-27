@@ -4,7 +4,9 @@ import { expect, vi, type Mock } from "vitest";
 
 import type { GeneratorBroker } from "../../../brokers/generators/GeneratorBroker.js";
 import type { LoggingBroker } from "../../../brokers/loggings/LoggingBroker.js";
+import type { TimeBroker } from "../../../brokers/times/TimeBroker.js";
 import type { ResolvedInference } from "../../../models/brokers/generators/ResolvedInference.js";
+import { createNativeOptions } from "../../../models/foundations/brains/NativeAsk.js";
 import { createResolvedInference } from "../../../models/brokers/generators/ResolvedInference.js";
 import { BrainService } from "./BrainService.js";
 
@@ -48,17 +50,35 @@ export function createLoggingBrokerMock(): LoggingBrokerMock {
 export function createBrainServiceTests(honorsRequest = true): {
   generatorBrokerMock: GeneratorBrokerMock;
   loggingBrokerMock: LoggingBrokerMock;
+  timeBrokerMock: TimeBrokerMock;
   brainService: BrainService;
 } {
   const generatorBrokerMock: GeneratorBrokerMock = { honorsRequest, generate: vi.fn() };
   const loggingBrokerMock = createLoggingBrokerMock();
+  const timeBrokerMock = createTimeBrokerMock();
 
   const brainService = new BrainService(
     generatorBrokerMock as unknown as GeneratorBroker,
     loggingBrokerMock as unknown as LoggingBroker,
+    null,
+    createNativeOptions(),
+    timeBrokerMock as unknown as TimeBroker,
   );
 
-  return { generatorBrokerMock, loggingBrokerMock, brainService };
+  return { generatorBrokerMock, loggingBrokerMock, timeBrokerMock, brainService };
+}
+
+// A clock whose waits return at once, so a test of waiting never waits.
+export interface TimeBrokerMock {
+  readonly getCurrentDateTime: Mock<() => Date>;
+  readonly delay: Mock<(milliseconds: number, signal?: AbortSignal) => Promise<void>>;
+}
+
+export function createTimeBrokerMock(): TimeBrokerMock {
+  return {
+    getCurrentDateTime: vi.fn(() => new Date()),
+    delay: vi.fn(async () => {}),
+  };
 }
 
 export function createRandomString(): string {

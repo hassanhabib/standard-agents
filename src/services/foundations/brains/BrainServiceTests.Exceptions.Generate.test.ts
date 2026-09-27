@@ -1,24 +1,34 @@
 import { describe, expect, it } from "vitest";
 
 import { HttpResponseException } from "../../../models/brokers/https/HttpResponseException.js";
+import { BusyBrainException } from "../../../models/foundations/brains/exceptions/BusyBrainException.js";
 import { BrainDependencyException } from "../../../models/foundations/brains/exceptions/BrainDependencyException.js";
 import { BrainDependencyValidationException } from "../../../models/foundations/brains/exceptions/BrainDependencyValidationException.js";
 import { BrainServiceException } from "../../../models/foundations/brains/exceptions/BrainServiceException.js";
+import { FaultedBrainException } from "../../../models/foundations/brains/exceptions/FaultedBrainException.js";
 import { FailedBrainDependencyException } from "../../../models/foundations/brains/exceptions/FailedBrainDependencyException.js";
 import { FailedBrainServiceException } from "../../../models/foundations/brains/exceptions/FailedBrainServiceException.js";
 import { InvalidBrainException } from "../../../models/foundations/brains/exceptions/InvalidBrainException.js";
+import { MalformedBrainReplyException } from "../../../models/foundations/brains/exceptions/MalformedBrainReplyException.js";
+import { NotFoundBrainException } from "../../../models/foundations/brains/exceptions/NotFoundBrainException.js";
+import { RefusedBrainException } from "../../../models/foundations/brains/exceptions/RefusedBrainException.js";
+import { RejectedBrainException } from "../../../models/foundations/brains/exceptions/RejectedBrainException.js";
+import { UnavailableBrainException } from "../../../models/foundations/brains/exceptions/UnavailableBrainException.js";
 import { UnreachableBrainException } from "../../../models/foundations/brains/exceptions/UnreachableBrainException.js";
 import { createBrainServiceTests, createRandomString, expectSameExceptionAs, verifyNoOtherCalls } from "./BrainServiceTests.js";
 
 describe("BrainService generate exceptions", () => {
-  it("ShouldThrowDependencyValidationExceptionOnGenerateIfBadRequestErrorOccursAndLogItAsync", async () => {
+  it("ShouldThrowDependencyValidationExceptionOnGenerateIfBadRequestErrorOccursAndSayWhyLastAsync", async () => {
     // given
+    // The service said what was wrong with the request, and the window said "Invalid brain request.
+    // Please correct the error and try again", which asks somebody to correct an error it did not
+    // name. The reason is kept as the end of the sentence; the body is still kept whole in the data.
     const { generatorBrokerMock, loggingBrokerMock, brainService } = createBrainServiceTests();
-    const responseBody = createRandomString();
+    const responseBody = JSON.stringify({ error: { message: "temperature must be between 0 and 2" } });
     const badRequestException = new HttpResponseException(400, responseBody);
 
     const invalidBrainException = new InvalidBrainException(
-      "Invalid brain request. Please correct the error and try again.",
+      "the model service could not accept the request (400): temperature must be between 0 and 2.",
     );
 
     invalidBrainException.upsertDataList("status", "400");
@@ -40,28 +50,32 @@ describe("BrainService generate exceptions", () => {
     expect(actualException).toBeInstanceOf(BrainDependencyValidationException);
     expectSameExceptionAs(actualException, expectedBrainDependencyValidationException);
     expectSameExceptionAs(loggingBrokerMock.logError.mock.calls[0]?.[0], expectedBrainDependencyValidationException);
+    expect(innermostMessageOf(actualException)).toBe(invalidBrainException.message);
     verifyNoOtherCalls(generatorBrokerMock, { generate: 1 });
     verifyNoOtherCalls(loggingBrokerMock, { logError: 1 });
   });
 
-  it.each([401, 403, 404])(
-    "ShouldThrowCriticalDependencyExceptionOnGenerateIfCriticalErrorOccursAndLogItAsync (%i)",
+  it.each([401, 403])(
+    "ShouldThrowCriticalDependencyExceptionOnGenerateIfTheKeyIsRefusedAndSayItLastAsync (%i)",
     async (status) => {
       // given
+      // Watched in both doors: the window said "HTTP 401" and the terminal said "contact support",
+      // for a key the service would not take. The key is the thing to go and look at, and neither
+      // sentence named it.
       const { generatorBrokerMock, loggingBrokerMock, brainService } = createBrainServiceTests();
-      const criticalDependencyException = new HttpResponseException(status, createRandomString());
+      const refusedException = new HttpResponseException(status, createRandomString());
 
-      const failedBrainDependencyException = new FailedBrainDependencyException(
-        "Failed brain dependency error occurred, contact support.",
-        criticalDependencyException,
+      const refusedBrainException = new RefusedBrainException(
+        `the model service did not accept this connection's key (${String(status)}). Check the key, and that it belongs to this service.`,
+        refusedException,
       );
 
       const expectedBrainDependencyException = new BrainDependencyException(
         "Brain dependency error occurred, contact support.",
-        failedBrainDependencyException,
+        new FailedBrainDependencyException("Failed brain dependency error occurred, contact support.", refusedBrainException),
       );
 
-      generatorBrokerMock.generate.mockRejectedValue(criticalDependencyException);
+      generatorBrokerMock.generate.mockRejectedValue(refusedException);
 
       // when
       const generateTask = brainService.generate(createRandomString(), createRandomString());
@@ -72,10 +86,44 @@ describe("BrainService generate exceptions", () => {
       expect(actualException).toBeInstanceOf(BrainDependencyException);
       expectSameExceptionAs(actualException, expectedBrainDependencyException);
       expectSameExceptionAs(loggingBrokerMock.logCritical.mock.calls[0]?.[0], expectedBrainDependencyException);
+      expect(innermostMessageOf(actualException)).toBe(refusedBrainException.message);
       verifyNoOtherCalls(generatorBrokerMock, { generate: 1 });
       verifyNoOtherCalls(loggingBrokerMock, { logCritical: 1 });
     },
   );
+
+  it("ShouldThrowCriticalDependencyExceptionOnGenerateIfNothingThereAnswersChatAndSayItLastAsync", async () => {
+    // given
+    // A 404 from a chat route is an address that is not a chat endpoint, or a model that is not
+    // installed where it was asked for. "HTTP 404" names neither.
+    const { generatorBrokerMock, loggingBrokerMock, brainService } = createBrainServiceTests();
+    const notFoundException = new HttpResponseException(404, createRandomString());
+
+    const notFoundBrainException = new NotFoundBrainException(
+      "nothing at that address answers chat requests (404). Check the address, and that the model it names is installed there.",
+      notFoundException,
+    );
+
+    const expectedBrainDependencyException = new BrainDependencyException(
+      "Brain dependency error occurred, contact support.",
+      new FailedBrainDependencyException("Failed brain dependency error occurred, contact support.", notFoundBrainException),
+    );
+
+    generatorBrokerMock.generate.mockRejectedValue(notFoundException);
+
+    // when
+    const generateTask = brainService.generate(createRandomString(), createRandomString());
+
+    // then
+    const actualException = await generateTask.then(() => undefined, (error: unknown) => error);
+
+    expect(actualException).toBeInstanceOf(BrainDependencyException);
+    expectSameExceptionAs(actualException, expectedBrainDependencyException);
+    expectSameExceptionAs(loggingBrokerMock.logCritical.mock.calls[0]?.[0], expectedBrainDependencyException);
+    expect(innermostMessageOf(actualException)).toBe(notFoundBrainException.message);
+    verifyNoOtherCalls(generatorBrokerMock, { generate: 1 });
+    verifyNoOtherCalls(loggingBrokerMock, { logCritical: 1 });
+  });
 
   // Localised rather than carried. What fetch says when it could not get a response at all is
   // "fetch failed", and that sentence rises through every tier above this one to whoever is
@@ -124,16 +172,139 @@ describe("BrainService generate exceptions", () => {
     verifyNoOtherCalls(loggingBrokerMock, { logCritical: 1 });
   });
 
-  it.each([500, 503, 429])(
-    "ShouldThrowDependencyExceptionOnGenerateIfDependencyErrorOccursAndLogItAsync (%i)",
+  it.each([
+    ["7", "Try again in 7 seconds."],
+    [null, "Try again in a moment."],
+  ])(
+    "ShouldThrowDependencyExceptionOnGenerateIfTheServiceIsBusyAndSayHowLongToWaitAsync (%s)",
+    async (retryAfter, wait) => {
+      // given
+      // A 429 is the service saying "not now", and usually saying for how long. Both doors showed
+      // "HTTP 429", or "contact support", and the wait the service named was thrown away.
+      const { generatorBrokerMock, loggingBrokerMock, brainService } = createBrainServiceTests();
+      const busyException = new HttpResponseException(429, createRandomString(), retryAfter);
+
+      const busyBrainException = new BusyBrainException(
+        `the model service is taking too many requests right now (429). ${wait}`,
+        busyException,
+      );
+
+      const expectedBrainDependencyException = new BrainDependencyException(
+        "Brain dependency error occurred, contact support.",
+        new FailedBrainDependencyException("Failed brain dependency error occurred, contact support.", busyBrainException),
+      );
+
+      generatorBrokerMock.generate.mockRejectedValue(busyException);
+
+      // when
+      const generateTask = brainService.generate(createRandomString(), createRandomString());
+
+      // then
+      const actualException = await generateTask.then(() => undefined, (error: unknown) => error);
+
+      expect(actualException).toBeInstanceOf(BrainDependencyException);
+      expectSameExceptionAs(actualException, expectedBrainDependencyException);
+      expectSameExceptionAs(loggingBrokerMock.logError.mock.calls[0]?.[0], expectedBrainDependencyException);
+      expect(innermostMessageOf(actualException)).toBe(busyBrainException.message);
+      // Asked once more after the wait before being reported, which is the one extra line in the log.
+      verifyNoOtherCalls(loggingBrokerMock, { logError: 1, logProcess: 1 });
+    },
+  );
+
+  it.each([
+    [503, "12", "Try again in 12 seconds."],
+    [502, null, "Try again in a moment."],
+    [504, null, "Try again in a moment."],
+    [408, null, "Try again in a moment."],
+  ])(
+    "ShouldThrowDependencyExceptionOnGenerateIfTheServiceIsUnavailableAndSayItLastAsync (%i)",
+    async (status, retryAfter, wait) => {
+      // given
+      // The service, or the gateway in front of it, cannot answer right now. Watched on a Host
+      // restarting: the window said "HTTP 503", which is true and says nothing about waiting.
+      const { generatorBrokerMock, loggingBrokerMock, brainService } = createBrainServiceTests();
+      const unavailableException = new HttpResponseException(status, createRandomString(), retryAfter);
+
+      const unavailableBrainException = new UnavailableBrainException(
+        `the model service is not available right now (${String(status)}). ${wait}`,
+        unavailableException,
+      );
+
+      const expectedBrainDependencyException = new BrainDependencyException(
+        "Brain dependency error occurred, contact support.",
+        new FailedBrainDependencyException("Failed brain dependency error occurred, contact support.", unavailableBrainException),
+      );
+
+      generatorBrokerMock.generate.mockRejectedValue(unavailableException);
+
+      // when
+      const generateTask = brainService.generate(createRandomString(), createRandomString());
+
+      // then
+      const actualException = await generateTask.then(() => undefined, (error: unknown) => error);
+
+      expect(actualException).toBeInstanceOf(BrainDependencyException);
+      expectSameExceptionAs(actualException, expectedBrainDependencyException);
+      expectSameExceptionAs(loggingBrokerMock.logError.mock.calls[0]?.[0], expectedBrainDependencyException);
+      expect(innermostMessageOf(actualException)).toBe(unavailableBrainException.message);
+
+      // A 503 is asked once more after the wait; the gateways and a 408 are reported at once.
+      verifyNoOtherCalls(loggingBrokerMock, { logError: 1, logProcess: status === 503 ? 1 : 0 });
+    },
+  );
+
+  it.each([
+    [409, JSON.stringify({ error: { message: "the model is still loading" } }), "the model service refused the request (409): the model is still loading."],
+    [402, "insufficient tokens for this request", "the model service refused the request (402): insufficient tokens for this request."],
+    [422, "<!DOCTYPE html><html><body>Unprocessable</body></html>", "the model service refused the request (422)."],
+  ])(
+    "ShouldThrowDependencyExceptionOnGenerateIfTheServiceRejectsTheRequestAndSayWhyLastAsync (%i)",
+    async (status, body, sentence) => {
+      // given
+      // A 4xx that is not a key, an address or an overload is the service turning this request down
+      // for a reason of its own, and it usually says which. Both doors dropped it and showed the
+      // status. An HTML page is not a reason, so it is left out rather than pasted in.
+      const { generatorBrokerMock, loggingBrokerMock, brainService } = createBrainServiceTests();
+      const rejectedException = new HttpResponseException(status, body);
+      const rejectedBrainException = new RejectedBrainException(sentence, rejectedException);
+
+      const expectedBrainDependencyException = new BrainDependencyException(
+        "Brain dependency error occurred, contact support.",
+        new FailedBrainDependencyException("Failed brain dependency error occurred, contact support.", rejectedBrainException),
+      );
+
+      generatorBrokerMock.generate.mockRejectedValue(rejectedException);
+
+      // when
+      const generateTask = brainService.generate(createRandomString(), createRandomString());
+
+      // then
+      const actualException = await generateTask.then(() => undefined, (error: unknown) => error);
+
+      expect(actualException).toBeInstanceOf(BrainDependencyException);
+      expectSameExceptionAs(actualException, expectedBrainDependencyException);
+      expect(innermostMessageOf(actualException)).toBe(sentence);
+      verifyNoOtherCalls(loggingBrokerMock, { logError: 1 });
+    },
+  );
+
+  it.each([500, 501, 505])(
+    "ShouldThrowDependencyExceptionOnGenerateIfTheServiceFaultsAndSayItLastAsync (%i)",
     async (status) => {
       // given
+      // A fault of the service's own. "HTTP 500" is true; what somebody can do is try again, and
+      // know that a fault that keeps coming back is the service's to fix, not theirs.
       const { generatorBrokerMock, loggingBrokerMock, brainService } = createBrainServiceTests();
       const dependencyException = new HttpResponseException(status, createRandomString());
 
+      const faultedBrainException = new FaultedBrainException(
+        `the model service failed while answering (${String(status)}). Try again; if it keeps happening, the service needs looking at.`,
+        dependencyException,
+      );
+
       const failedBrainDependencyException = new FailedBrainDependencyException(
         "Failed brain dependency error occurred, contact support.",
-        dependencyException,
+        faultedBrainException,
       );
 
       const expectedBrainDependencyException = new BrainDependencyException(
@@ -152,10 +323,42 @@ describe("BrainService generate exceptions", () => {
       expect(actualException).toBeInstanceOf(BrainDependencyException);
       expectSameExceptionAs(actualException, expectedBrainDependencyException);
       expectSameExceptionAs(loggingBrokerMock.logError.mock.calls[0]?.[0], expectedBrainDependencyException);
+      expect(innermostMessageOf(actualException)).toBe(faultedBrainException.message);
       verifyNoOtherCalls(generatorBrokerMock, { generate: 1 });
       verifyNoOtherCalls(loggingBrokerMock, { logError: 1 });
     },
   );
+
+  it("ShouldThrowDependencyExceptionOnGenerateIfTheReplyIsNotWhatAModelServiceSendsAndSayItLastAsync", async () => {
+    // given
+    // A 200 that is a page of HTML: the address points at a web page or a proxy, not a model
+    // service. What reached whoever was waiting was the JSON parser's complaint about a '<'.
+    const { generatorBrokerMock, loggingBrokerMock, brainService } = createBrainServiceTests();
+    const syntaxError = new SyntaxError(`Unexpected token '<', "<!DOCTYPE "... is not valid JSON`);
+
+    const malformedBrainReplyException = new MalformedBrainReplyException(
+      "the reply was not what a model service sends. Check that the address points at an OpenAI-compatible API.",
+      syntaxError,
+    );
+
+    const expectedBrainDependencyException = new BrainDependencyException(
+      "Brain dependency error occurred, contact support.",
+      new FailedBrainDependencyException("Failed brain dependency error occurred, contact support.", malformedBrainReplyException),
+    );
+
+    generatorBrokerMock.generate.mockRejectedValue(syntaxError);
+
+    // when
+    const generateTask = brainService.generate(createRandomString(), createRandomString());
+
+    // then
+    const actualException = await generateTask.then(() => undefined, (error: unknown) => error);
+
+    expect(actualException).toBeInstanceOf(BrainDependencyException);
+    expectSameExceptionAs(actualException, expectedBrainDependencyException);
+    expect(innermostMessageOf(actualException)).toBe(malformedBrainReplyException.message);
+    verifyNoOtherCalls(loggingBrokerMock, { logError: 1 });
+  });
 
   it("ShouldThrowServiceExceptionOnGenerateIfServiceErrorOccursAndLogItAsync", async () => {
     // given

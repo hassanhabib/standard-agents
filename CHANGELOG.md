@@ -4,6 +4,44 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.13.0]
+
+### When the model service fails
+
+- **Every failure says what happened, as the last word.** A door shows the bottom of an error's
+  chain, and a failing status left the raw `HttpResponseException` there, so people read "HTTP 401",
+  "HTTP 503", or a JSON parser's complaint about a `<`. Each kind now ends in its own sentence, with
+  the native fault kept as the cause and in the data, the way `UnreachableBrainException` already
+  did:
+
+  | What happened | Exception | Says |
+  |---|---|---|
+  | 401, 403 | `RefusedBrainException` | the key was not accepted; check it |
+  | 404 | `NotFoundBrainException` | nothing there answers chat, or the model is not installed |
+  | 429 | `BusyBrainException` | too many requests; try again in the seconds the service named |
+  | 408, 502, 503, 504 | `UnavailableBrainException` | not available right now; the same wait |
+  | other 5xx | `FaultedBrainException` | the service failed; try again, and it is the service's to fix if it persists |
+  | other 4xx | `RejectedBrainException` | refused, with the service's own reason when it gave one in words |
+  | 400 | `InvalidBrainException` | the same, in place of "Invalid brain request" |
+  | a reply that is not JSON | `MalformedBrainReplyException` | check that the address is an OpenAI-compatible API |
+  | no first piece within 30 seconds | `TimedOutBrainException` | it did not start answering in time |
+  | the connection drops mid-answer | `StreamInterruptedException` | it dropped partway; what arrived is above |
+
+  Categories and log severities are unchanged.
+- **A busy service is asked once more.** A 429 or a 503 is retried once, after the `Retry-After`
+  the service sent (a number of seconds or a date), capped at thirty seconds, and two seconds when
+  it said nothing. A streamed turn says so first on the Narration channel ("The model service is
+  busy (503), so I am trying again in 5 seconds."). A status arrives before the first frame, so
+  nothing said is ever said twice. `HttpResponseException` carries `retryAfter`, and the brokers
+  now pass the header up rather than dropping it.
+- **A streamed turn gives up after thirty seconds without a first piece.** Once the answer has
+  started it may take as long as it takes.
+- **A stop in the middle of a turn is a cancel.** It ended as a failure reading "This operation was
+  aborted"; it now ends as cancelled, exactly as a stop between turns does.
+- `TimeBroker` gains `delay(milliseconds, signal)`, so a service that waits can be tested without
+  waiting. `BrainService` takes the clock as its last constructor argument, defaulting to the
+  system's.
+
 ## [0.12.0]
 
 ### The loop, on every protocol

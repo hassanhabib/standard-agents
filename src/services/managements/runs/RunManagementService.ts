@@ -150,85 +150,97 @@ export class RunManagementService {
       const startedOn = this.timeBroker.getCurrentDateTime();
       let stoppedBecause: string | null = null;
 
-      for (let turn = 0; turn < this.options.maxTurns; turn++) {
-        if (signal?.aborted === true) {
-          stoppedBecause = CANCELLED_MESSAGE;
-          break;
+      // A stop that arrives in the middle of a turn cuts the request short where it stands, and
+      // what comes back is whatever the platform raises for an aborted request. It is still the
+      // stop somebody asked for, and it ends the run the way a stop between turns does: as
+      // cancelled, not as a failure with an offer to try the same thing somewhere else.
+      try {
+        for (let turn = 0; turn < this.options.maxTurns; turn++) {
+          if (signal?.aborted === true) {
+            stoppedBecause = CANCELLED_MESSAGE;
+            break;
+          }
+
+          const exhausted = exhaustion(this.options.budget, spend, startedOn, this.timeBroker.getCurrentDateTime());
+
+          if (exhausted !== null) {
+            stoppedBecause = exhausted;
+            break;
+          }
+
+          await this.loggingBroker.logTurn(turn);
+          await this.loggingBroker.logStep("Data");
+          context = await this.dataCoordinationService.recall(context);
+          await this.loggingBroker.logStep("Decision");
+          // The one difference between the doors, and it is only about when the words arrive: the
+          // streamed door watches the decision being made and voices each finished narration line
+          // once the Gate has passed it. Everything else in this turn is identical.
+          const narrator = createLiveNarrator(this.decisionCoordinationService, this.loggingBroker, emit);
+
+          if (streaming) {
+            context = await this.decisionCoordinationService.thinkStream(context, async (delta) => {
+              await narrator.accept(delta.narration);
+            });
+
+            await narrator.flush();
+          } else {
+            context = await this.decisionCoordinationService.think(context);
+          }
+          spend.tokens += context.promptTokens + context.completionTokens;
+
+          if (context.status === "Revising") {
+            await this.loggingBroker.logOutcome(`turn ${turn}: revising`);
+            continue;
+          }
+
+          await this.loggingBroker.logStep("Direction");
+
+          // Voiced before the act it announces, screened first (SPEC.md Invariant 5).
+          await voiceNarration(this.decisionCoordinationService, this.loggingBroker, this.options.toolNarrations, context, emit, narrator.narrated);
+
+          // Screened before the Tool event below: a caller watching the stream must not receive
+          // the text the Brain was protected from (SPEC.md 4.9).
+          const observedBefore = context.observations.length;
+          context = await this.directionCoordinationService.act(context);
+          context = await screened(this.decisionCoordinationService, this.loggingBroker, this.options.screenToolOutput, context, observedBefore);
+          await this.loggingBroker.logOutcome(`turn ${turn}: ${context.status}`);
+
+          if (context.status === "Working" && context.result.length > 0) {
+            await voiceObservedNarration(this.loggingBroker, this.options.toolNarrations, context, emit);
+            await emit({ type: "Tool", content: `${context.directionType}: ${context.result}` });
+          }
+
+          // The same act, asked for as many times as the deployment allows, ends the run here. The
+          // perimeter has already answered it with a replay, a note, and the note alone; a model
+          // still asking is going in circles, and every turn it is given from here is the same turn.
+          const replaysOfLatestAsk = AgentRun.current()?.replaysOfLatestAsk ?? 0;
+
+          if (context.status === "Working" && goingInCircles(context.toolExchanges, replaysOfLatestAsk, this.options.identicalCallLimit)) {
+            stoppedBecause = CIRCLES_MESSAGE(this.options.identicalCallLimit);
+            break;
+          }
+
+          // A held act is announced before its message: the Status event says what happened for
+          // a consumer that switches on kinds, and the Response carries the same words the
+          // batched caller receives.
+          if (context.status === "AwaitingApproval") {
+            await emit({ type: "Status", content: "an act is waiting for approval; the run is held" });
+          }
+
+          if (isDelivered(context) && context.result.length > 0) {
+            await emit({ type: "Response", content: context.result });
+          }
+
+          if (context.status !== "Working") {
+            break;
+          }
+        }
+      } catch (error: unknown) {
+        if (signal?.aborted !== true) {
+          throw error;
         }
 
-        const exhausted = exhaustion(this.options.budget, spend, startedOn, this.timeBroker.getCurrentDateTime());
-
-        if (exhausted !== null) {
-          stoppedBecause = exhausted;
-          break;
-        }
-
-        await this.loggingBroker.logTurn(turn);
-        await this.loggingBroker.logStep("Data");
-        context = await this.dataCoordinationService.recall(context);
-        await this.loggingBroker.logStep("Decision");
-        // The one difference between the doors, and it is only about when the words arrive: the
-        // streamed door watches the decision being made and voices each finished narration line
-        // once the Gate has passed it. Everything else in this turn is identical.
-        const narrator = createLiveNarrator(this.decisionCoordinationService, this.loggingBroker, emit);
-
-        if (streaming) {
-          context = await this.decisionCoordinationService.thinkStream(context, async (delta) => {
-            await narrator.accept(delta.narration);
-          });
-
-          await narrator.flush();
-        } else {
-          context = await this.decisionCoordinationService.think(context);
-        }
-        spend.tokens += context.promptTokens + context.completionTokens;
-
-        if (context.status === "Revising") {
-          await this.loggingBroker.logOutcome(`turn ${turn}: revising`);
-          continue;
-        }
-
-        await this.loggingBroker.logStep("Direction");
-
-        // Voiced before the act it announces, screened first (SPEC.md Invariant 5).
-        await voiceNarration(this.decisionCoordinationService, this.loggingBroker, this.options.toolNarrations, context, emit, narrator.narrated);
-
-        // Screened before the Tool event below: a caller watching the stream must not receive
-        // the text the Brain was protected from (SPEC.md 4.9).
-        const observedBefore = context.observations.length;
-        context = await this.directionCoordinationService.act(context);
-        context = await screened(this.decisionCoordinationService, this.loggingBroker, this.options.screenToolOutput, context, observedBefore);
-        await this.loggingBroker.logOutcome(`turn ${turn}: ${context.status}`);
-
-        if (context.status === "Working" && context.result.length > 0) {
-          await voiceObservedNarration(this.loggingBroker, this.options.toolNarrations, context, emit);
-          await emit({ type: "Tool", content: `${context.directionType}: ${context.result}` });
-        }
-
-        // The same act, asked for as many times as the deployment allows, ends the run here. The
-        // perimeter has already answered it with a replay, a note, and the note alone; a model
-        // still asking is going in circles, and every turn it is given from here is the same turn.
-        const replaysOfLatestAsk = AgentRun.current()?.replaysOfLatestAsk ?? 0;
-
-        if (context.status === "Working" && goingInCircles(context.toolExchanges, replaysOfLatestAsk, this.options.identicalCallLimit)) {
-          stoppedBecause = CIRCLES_MESSAGE(this.options.identicalCallLimit);
-          break;
-        }
-
-        // A held act is announced before its message: the Status event says what happened for
-        // a consumer that switches on kinds, and the Response carries the same words the
-        // batched caller receives.
-        if (context.status === "AwaitingApproval") {
-          await emit({ type: "Status", content: "an act is waiting for approval; the run is held" });
-        }
-
-        if (isDelivered(context) && context.result.length > 0) {
-          await emit({ type: "Response", content: context.result });
-        }
-
-        if (context.status !== "Working") {
-          break;
-        }
+        stoppedBecause = CANCELLED_MESSAGE;
       }
 
       // Cancelled or out of budget: reported as a Status rather than a Response, because it is
