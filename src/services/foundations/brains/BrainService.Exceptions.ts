@@ -7,6 +7,7 @@ import { BrainValidationException } from "../../../models/foundations/brains/exc
 import { FailedBrainDependencyException } from "../../../models/foundations/brains/exceptions/FailedBrainDependencyException.js";
 import { FailedBrainServiceException } from "../../../models/foundations/brains/exceptions/FailedBrainServiceException.js";
 import { InvalidBrainException } from "../../../models/foundations/brains/exceptions/InvalidBrainException.js";
+import { RefusedBrainException } from "../../../models/foundations/brains/exceptions/RefusedBrainException.js";
 import { UnreachableBrainException } from "../../../models/foundations/brains/exceptions/UnreachableBrainException.js";
 
 // The exception partial (SPEC-cli 3.1): the brain family's categories, each localising the
@@ -18,6 +19,7 @@ import { UnreachableBrainException } from "../../../models/foundations/brains/ex
 export type TryCatch = <T>(routine: () => Promise<T>) => Promise<T>;
 
 const CRITICAL_STATUSES = new Set([401, 403, 404]);
+const REFUSED_STATUSES = new Set([401, 403]);
 
 export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
   return async function tryCatch<T>(routine: () => Promise<T>): Promise<T> {
@@ -37,6 +39,18 @@ export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
         invalidBrainException.upsertDataList("body", error.body);
 
         throw await createAndLogDependencyValidationException(loggingBroker, invalidBrainException);
+      }
+
+      // The service answered, and would not take the key. Said as that, with the status beside it
+      // for whoever reads a log, rather than as the status alone.
+      if (error instanceof HttpResponseException && REFUSED_STATUSES.has(error.status)) {
+        throw await createAndLogCriticalDependencyException(
+          loggingBroker,
+          new RefusedBrainException(
+            `the model service did not accept this connection's key (${String(error.status)}). Check the key, and that it belongs to this service.`,
+            error,
+          ),
+        );
       }
 
       if (error instanceof HttpResponseException && CRITICAL_STATUSES.has(error.status)) {
