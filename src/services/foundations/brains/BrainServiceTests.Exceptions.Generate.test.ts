@@ -7,6 +7,7 @@ import { BrainServiceException } from "../../../models/foundations/brains/except
 import { FailedBrainDependencyException } from "../../../models/foundations/brains/exceptions/FailedBrainDependencyException.js";
 import { FailedBrainServiceException } from "../../../models/foundations/brains/exceptions/FailedBrainServiceException.js";
 import { InvalidBrainException } from "../../../models/foundations/brains/exceptions/InvalidBrainException.js";
+import { NotFoundBrainException } from "../../../models/foundations/brains/exceptions/NotFoundBrainException.js";
 import { RefusedBrainException } from "../../../models/foundations/brains/exceptions/RefusedBrainException.js";
 import { UnreachableBrainException } from "../../../models/foundations/brains/exceptions/UnreachableBrainException.js";
 import { createBrainServiceTests, createRandomString, expectSameExceptionAs, verifyNoOtherCalls } from "./BrainServiceTests.js";
@@ -82,38 +83,38 @@ describe("BrainService generate exceptions", () => {
     },
   );
 
-  it.each([404])(
-    "ShouldThrowCriticalDependencyExceptionOnGenerateIfCriticalErrorOccursAndLogItAsync (%i)",
-    async (status) => {
-      // given
-      const { generatorBrokerMock, loggingBrokerMock, brainService } = createBrainServiceTests();
-      const criticalDependencyException = new HttpResponseException(status, createRandomString());
+  it("ShouldThrowCriticalDependencyExceptionOnGenerateIfNothingThereAnswersChatAndSayItLastAsync", async () => {
+    // given
+    // A 404 from a chat route is an address that is not a chat endpoint, or a model that is not
+    // installed where it was asked for. "HTTP 404" names neither.
+    const { generatorBrokerMock, loggingBrokerMock, brainService } = createBrainServiceTests();
+    const notFoundException = new HttpResponseException(404, createRandomString());
 
-      const failedBrainDependencyException = new FailedBrainDependencyException(
-        "Failed brain dependency error occurred, contact support.",
-        criticalDependencyException,
-      );
+    const notFoundBrainException = new NotFoundBrainException(
+      "nothing at that address answers chat requests (404). Check the address, and that the model it names is installed there.",
+      notFoundException,
+    );
 
-      const expectedBrainDependencyException = new BrainDependencyException(
-        "Brain dependency error occurred, contact support.",
-        failedBrainDependencyException,
-      );
+    const expectedBrainDependencyException = new BrainDependencyException(
+      "Brain dependency error occurred, contact support.",
+      new FailedBrainDependencyException("Failed brain dependency error occurred, contact support.", notFoundBrainException),
+    );
 
-      generatorBrokerMock.generate.mockRejectedValue(criticalDependencyException);
+    generatorBrokerMock.generate.mockRejectedValue(notFoundException);
 
-      // when
-      const generateTask = brainService.generate(createRandomString(), createRandomString());
+    // when
+    const generateTask = brainService.generate(createRandomString(), createRandomString());
 
-      // then
-      const actualException = await generateTask.then(() => undefined, (error: unknown) => error);
+    // then
+    const actualException = await generateTask.then(() => undefined, (error: unknown) => error);
 
-      expect(actualException).toBeInstanceOf(BrainDependencyException);
-      expectSameExceptionAs(actualException, expectedBrainDependencyException);
-      expectSameExceptionAs(loggingBrokerMock.logCritical.mock.calls[0]?.[0], expectedBrainDependencyException);
-      verifyNoOtherCalls(generatorBrokerMock, { generate: 1 });
-      verifyNoOtherCalls(loggingBrokerMock, { logCritical: 1 });
-    },
-  );
+    expect(actualException).toBeInstanceOf(BrainDependencyException);
+    expectSameExceptionAs(actualException, expectedBrainDependencyException);
+    expectSameExceptionAs(loggingBrokerMock.logCritical.mock.calls[0]?.[0], expectedBrainDependencyException);
+    expect(innermostMessageOf(actualException)).toBe(notFoundBrainException.message);
+    verifyNoOtherCalls(generatorBrokerMock, { generate: 1 });
+    verifyNoOtherCalls(loggingBrokerMock, { logCritical: 1 });
+  });
 
   // Localised rather than carried. What fetch says when it could not get a response at all is
   // "fetch failed", and that sentence rises through every tier above this one to whoever is
