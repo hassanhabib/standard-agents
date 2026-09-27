@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { userMessage } from "../../models/brokers/generators/v1/ConversationMessage.js";
+import { HttpResponseException } from "../../models/brokers/https/HttpResponseException.js";
 import { createHttpGeneratorBrokerV1Tests, jsonResponse } from "./HttpGeneratorBrokerV1Tests.js";
 
 describe("HttpGeneratorBrokerV1 generate logic", () => {
@@ -45,4 +46,39 @@ describe("HttpGeneratorBrokerV1 generate logic", () => {
     expect(generation.headers["x-example-decider"]).toBe("peer-7");
   });
 
+  it("ShouldCarryTheRetryAfterHeaderOnAFailingStatusAsync", async () => {
+    // given
+    // A service that says how long to wait has said the one thing a retry, or a person, needs. The
+    // broker threw the status and the body and dropped the header.
+    const { generatorBroker } = createHttpGeneratorBrokerV1Tests(() =>
+      new Response("slow down", { status: 429, headers: { "retry-after": "9" } }));
+
+    // when
+    const raised = (await generatorBroker.generate([userMessage("explain this repository")], []).catch((error: unknown) => error)) as HttpResponseException;
+
+    // then
+    expect(raised).toBeInstanceOf(HttpResponseException);
+    expect(raised.status).toBe(429);
+    expect(raised.retryAfter).toBe("9");
+  });
+
+  it("ShouldCarryTheRetryAfterHeaderOnAFailingStreamedStatusAsync", async () => {
+    // given
+    const { generatorBroker } = createHttpGeneratorBrokerV1Tests(() =>
+      new Response("try later", { status: 503, headers: { "retry-after": "4" } }));
+
+    // when
+    const raised = (await drain(generatorBroker.generateStream([userMessage("explain this repository")], [])).catch((error: unknown) => error)) as HttpResponseException;
+
+    // then
+    expect(raised).toBeInstanceOf(HttpResponseException);
+    expect(raised.status).toBe(503);
+    expect(raised.retryAfter).toBe("4");
+  });
 });
+
+async function drain(deltas: AsyncGenerator<unknown>): Promise<void> {
+  for await (const delta of deltas) {
+    void delta;
+  }
+}
