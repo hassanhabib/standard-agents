@@ -184,9 +184,13 @@ export class RunManagementService {
           const narrator = createLiveNarrator(this.decisionCoordinationService, this.loggingBroker, emit);
 
           if (streaming) {
-            context = await this.decisionCoordinationService.thinkStream(context, async (delta) => {
-              await narrator.accept(delta.narration);
-            });
+            context = await this.decisionCoordinationService.thinkStream(
+              context,
+              async (delta) => {
+                await narrator.accept(delta.narration);
+              },
+              sayingWhatIsBeingSpent(spent, emit),
+            );
 
             await narrator.flush();
           } else {
@@ -410,6 +414,37 @@ export class RunManagementService {
     return this.options.principalResolver === null ? "" : (this.options.principalResolver()?.id ?? "");
   }
 }
+
+// What the run is spending while a call is answered (SPEC.md 4.14.1, spending): the run's settled
+// total, plus what this call has put in front of the model and what has come back so far. Always
+// estimated, never what the budget reads, and superseded by the call's usage when it ends.
+//
+// The first is said the moment the call is sent, because the prompt is spent then and it is most of
+// what a call costs. After that a piece is said once it has moved the count by SPENDING_STEP or
+// more: a file written into a call's arguments arrives a few characters at a time, and a thousand
+// events for one file is a thousand redraws for a number nobody can read that fast.
+function sayingWhatIsBeingSpent(settled: AgentUsage, emit: EventSink): (soFar: AgentUsage) => Promise<void> {
+  let lastSaid: number | null = null;
+
+  return async (soFar) => {
+    const spending: AgentUsage = {
+      promptTokens: settled.promptTokens + soFar.promptTokens,
+      completionTokens: settled.completionTokens + soFar.completionTokens,
+      isEstimated: true,
+    };
+
+    const total = totalTokens(spending);
+
+    if (lastSaid !== null && total - lastSaid < SPENDING_STEP) {
+      return;
+    }
+
+    lastSaid = total;
+    await emit({ type: "Spending", content: String(total), usage: spending });
+  };
+}
+
+const SPENDING_STEP = 25;
 
 function isDelivered(context: AgentContext): boolean {
   return (
