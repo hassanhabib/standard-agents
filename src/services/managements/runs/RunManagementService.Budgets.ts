@@ -17,8 +17,10 @@ export const CIRCLES_MESSAGE = (times: number): string =>
 const WORDS: Readonly<Record<number, string>> = { 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight", 9: "nine", 10: "ten" };
 
 // Whether the act this run just made is the one it has been making, as many times as the limit
-// allows, and doing nothing each time. Counted over the run's own exchanges, which is what the
-// native protocol keeps; the text protocol keeps none and stays on the turn cap, as it always has.
+// allows, and doing nothing each time. Counted on the run, which every protocol shares, and over
+// the exchanges, which the native protocol keeps and a resumed run was handed; whichever saw more
+// replays saw what happened. The text protocol keeps no exchanges, and a count read from them alone
+// left it on the turn cap (SPEC.md 4.10, v1.14).
 //
 // Only the asks the ledger answered count, on top of the one that ran. A read after an edit is
 // the same ask and is not a repeat: it runs, because the file changed. Watched live: a loop that
@@ -30,19 +32,24 @@ const WORDS: Readonly<Record<number, string>> = { 2: "two", 3: "three", 4: "four
 // it. A note is not enough for every model.
 export function goingInCircles(
   exchanges: ReadonlyArray<{ readonly toolName: string; readonly argumentsJson: string; readonly replayed?: boolean }>,
+  replaysOfLatestAsk: number,
   limit: number,
 ): boolean {
+  return Math.max(exchangedReplays(exchanges), replaysOfLatestAsk) + 1 >= limit;
+}
+
+function exchangedReplays(
+  exchanges: ReadonlyArray<{ readonly toolName: string; readonly argumentsJson: string; readonly replayed?: boolean }>,
+): number {
   const last = exchanges.at(-1);
 
   if (last === undefined || last.replayed !== true) {
-    return false;
+    return 0;
   }
 
-  const replays = exchanges.filter(
+  return exchanges.filter(
     (exchange) => exchange.replayed === true && exchange.toolName === last.toolName && exchange.argumentsJson === last.argumentsJson,
   ).length;
-
-  return replays + 1 >= limit;
 }
 
 // What one run has consumed so far. Tokens accumulate from what the turns reported, counted or

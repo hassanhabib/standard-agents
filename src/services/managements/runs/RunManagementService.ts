@@ -208,7 +208,9 @@ export class RunManagementService {
         // The same act, asked for as many times as the deployment allows, ends the run here. The
         // perimeter has already answered it with a replay, a note, and the note alone; a model
         // still asking is going in circles, and every turn it is given from here is the same turn.
-        if (context.status === "Working" && goingInCircles(context.toolExchanges, this.options.identicalCallLimit)) {
+        const replaysOfLatestAsk = AgentRun.current()?.replaysOfLatestAsk ?? 0;
+
+        if (context.status === "Working" && goingInCircles(context.toolExchanges, replaysOfLatestAsk, this.options.identicalCallLimit)) {
           stoppedBecause = CIRCLES_MESSAGE(this.options.identicalCallLimit);
           break;
         }
