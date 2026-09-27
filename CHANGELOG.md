@@ -4,6 +4,18 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.13.2]
+
+### Fixed
+
+- **A streamed turn waits four minutes for the service to answer, not thirty seconds.** Measured on
+  a Host on the local network: it sends nothing, not even its headers, until the whole answer is
+  ready, so a coding turn with forty messages behind it was cut off at thirty seconds on every
+  attempt while the Host was working. A Host that has not answered cannot be told from one that is
+  still writing a buffered answer. Four minutes fits a buffered coding turn on somebody's own
+  hardware and is said before the platform's own five minutes run out with "nothing answered",
+  which would not be true. The person's stop still ends a wait at once.
+
 ## [0.13.1]
 
 ### Fixed
