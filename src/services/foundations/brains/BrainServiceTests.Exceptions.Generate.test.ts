@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { HttpResponseException } from "../../../models/brokers/https/HttpResponseException.js";
+import { BusyBrainException } from "../../../models/foundations/brains/exceptions/BusyBrainException.js";
 import { BrainDependencyException } from "../../../models/foundations/brains/exceptions/BrainDependencyException.js";
 import { BrainDependencyValidationException } from "../../../models/foundations/brains/exceptions/BrainDependencyValidationException.js";
 import { BrainServiceException } from "../../../models/foundations/brains/exceptions/BrainServiceException.js";
@@ -162,6 +163,44 @@ describe("BrainService generate exceptions", () => {
     verifyNoOtherCalls(generatorBrokerMock, { generate: 1 });
     verifyNoOtherCalls(loggingBrokerMock, { logCritical: 1 });
   });
+
+  it.each([
+    ["7", "Try again in 7 seconds."],
+    [null, "Try again in a moment."],
+  ])(
+    "ShouldThrowDependencyExceptionOnGenerateIfTheServiceIsBusyAndSayHowLongToWaitAsync (%s)",
+    async (retryAfter, wait) => {
+      // given
+      // A 429 is the service saying "not now", and usually saying for how long. Both doors showed
+      // "HTTP 429", or "contact support", and the wait the service named was thrown away.
+      const { generatorBrokerMock, loggingBrokerMock, brainService } = createBrainServiceTests();
+      const busyException = new HttpResponseException(429, createRandomString(), retryAfter);
+
+      const busyBrainException = new BusyBrainException(
+        `the model service is taking too many requests right now (429). ${wait}`,
+        busyException,
+      );
+
+      const expectedBrainDependencyException = new BrainDependencyException(
+        "Brain dependency error occurred, contact support.",
+        new FailedBrainDependencyException("Failed brain dependency error occurred, contact support.", busyBrainException),
+      );
+
+      generatorBrokerMock.generate.mockRejectedValue(busyException);
+
+      // when
+      const generateTask = brainService.generate(createRandomString(), createRandomString());
+
+      // then
+      const actualException = await generateTask.then(() => undefined, (error: unknown) => error);
+
+      expect(actualException).toBeInstanceOf(BrainDependencyException);
+      expectSameExceptionAs(actualException, expectedBrainDependencyException);
+      expectSameExceptionAs(loggingBrokerMock.logError.mock.calls[0]?.[0], expectedBrainDependencyException);
+      expect(innermostMessageOf(actualException)).toBe(busyBrainException.message);
+      verifyNoOtherCalls(loggingBrokerMock, { logError: 1 });
+    },
+  );
 
   it.each([500, 503, 429])(
     "ShouldThrowDependencyExceptionOnGenerateIfDependencyErrorOccursAndLogItAsync (%i)",
