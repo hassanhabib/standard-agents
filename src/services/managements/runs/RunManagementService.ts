@@ -7,6 +7,7 @@ import type { McpTool } from "../../../models/brokers/mcps/McpTool.js";
 import type { AgentOutcome } from "../../../models/clients/agents/AgentOutcome.js";
 import type { AgentStreamEvent } from "../../../models/clients/agents/AgentStreamEvent.js";
 import { createPromptRequest, type PromptRequest } from "../../../models/clients/agents/PromptRequest.js";
+import { NO_USAGE, totalTokens, type AgentUsage } from "../../../models/foundations/usages/AgentUsage.js";
 import { AgentRun } from "../../../models/loggings/AgentRun.js";
 import { createRunOptions, type RunOptions } from "../../../models/managements/runs/RunOptions.js";
 import { createAgentContext, type AgentContext } from "../../../models/orchestrations/agents/AgentContext.js";
@@ -150,6 +151,11 @@ export class RunManagementService {
       const startedOn = this.timeBroker.getCurrentDateTime();
       let stoppedBecause: string | null = null;
 
+      // The same spend, kept in the two halves a person reads it in and marked estimated once any
+      // call in it was counted here rather than reported (SPEC.md 3.4). One estimate in the sum
+      // makes the sum an estimate.
+      let spent: AgentUsage = NO_USAGE;
+
       // A stop that arrives in the middle of a turn cuts the request short where it stands, and
       // what comes back is whatever the platform raises for an aborted request. It is still the
       // stop somebody asked for, and it ends the run the way a stop between turns does: as
@@ -187,6 +193,17 @@ export class RunManagementService {
             context = await this.decisionCoordinationService.think(context);
           }
           spend.tokens += context.promptTokens + context.completionTokens;
+
+          spent = {
+            promptTokens: spent.promptTokens + context.promptTokens,
+            completionTokens: spent.completionTokens + context.completionTokens,
+            isEstimated: spent.isEstimated || context.usageIsEstimated,
+          };
+
+          // What the run has spent so far, said the moment it is known (SPEC.md 4.14.1): the count
+          // the budget above reads, not a second one. Before a revision's continue, because a draft
+          // sent back was still written.
+          await emit({ type: "Usage", content: String(totalTokens(spent)), usage: spent });
 
           if (context.status === "Revising") {
             await this.loggingBroker.logOutcome(`turn ${turn}: revising`);

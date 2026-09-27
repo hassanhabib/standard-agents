@@ -4,7 +4,7 @@ import { createPromptRequest } from "../../../models/clients/agents/PromptReques
 import { createAgentBudget } from "../../../models/coordinations/agents/AgentBudget.js";
 import { AgentRun } from "../../../models/loggings/AgentRun.js";
 import { DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE } from "../../../models/brokers/generators/ResolvedInference.js";
-import { actedReplay, actedResponse, actedTextReplay, actedTextTool, actedTool, collectEvents, createRandomString, createRunManagementServiceTests, recalled, thoughtAnswer, thoughtTool, verifyNoOtherCalls } from "./RunManagementServiceTests.js";
+import { actedReplay, actedResponse, actedTextReplay, actedTextTool, actedTool, collectEvents, createRandomString, createRunManagementServiceTests, recalled, thoughtAnswer, thoughtTool, verifyNoOtherCalls, withoutUsage } from "./RunManagementServiceTests.js";
 
 describe("RunManagementService run logic", () => {
   it("ShouldRunToAnAnswerAsync", async () => {
@@ -87,7 +87,7 @@ describe("RunManagementService run logic", () => {
     expect(actualOutcome.result).toBe(answer);
     expect(actualOutcome.status).toBe("Responded");
     expect(decisionCoordinationServiceMock.think.mock.calls[1]?.[0]).toMatchObject({ observations: [`${toolName}: ${output}`] });
-    expect(events).toEqual([{ type: "Tool", content: `${toolName}: ${output}` }, { type: "Response", content: answer }]);
+    expect(withoutUsage(events)).toEqual([{ type: "Tool", content: `${toolName}: ${output}` }, { type: "Response", content: answer }]);
     expect(loggingBrokerMock.logTurn.mock.calls.map((call) => call[0])).toEqual([0, 1]);
     expect(loggingBrokerMock.logOutcome).toHaveBeenNthCalledWith(1, "turn 0: Working");
     verifyNoOtherCalls(decisionCoordinationServiceMock, { think: 2 });
@@ -262,7 +262,7 @@ describe("RunManagementService run logic", () => {
     // then
     expect(actualOutcome).toEqual({ result: "I can't help with that at the moment.", status: "Refused", pendingEffect: null, failure: null });
 
-    expect(events).toEqual([
+    expect(withoutUsage(events)).toEqual([
       { type: "Status", content: "unable to satisfy review after retries; refusing" },
       { type: "Response", content: "I can't help with that at the moment." },
     ]);
@@ -451,7 +451,7 @@ describe("RunManagementService run logic", () => {
     // then
     expect(decisionCoordinationServiceMock.screen).toHaveBeenCalledWith(injected);
     expect(decisionCoordinationServiceMock.think.mock.calls[1]?.[0]).toMatchObject({ observations: [`${toolName}: ${refusal}`] });
-    expect(events[0]).toEqual({ type: "Tool", content: `${toolName}: ${refusal}` });
+    expect(withoutUsage(events)[0]).toEqual({ type: "Tool", content: `${toolName}: ${refusal}` });
     expect(loggingBrokerMock.logPayload).toHaveBeenCalledWith("Direction", `Screening REFUSED the result of '${toolName}'`, "refuse: an instruction rode in", false);
   });
 
@@ -482,7 +482,7 @@ describe("RunManagementService run logic", () => {
 
     // then
     expect(decisionCoordinationServiceMock.screen).toHaveBeenCalledWith(narration);
-    expect(events.slice(0, 2)).toEqual([{ type: "Narration", content: narration }, { type: "Tool", content: `${toolName}: ${output}` }]);
+    expect(withoutUsage(events).slice(0, 2)).toEqual([{ type: "Narration", content: narration }, { type: "Tool", content: `${toolName}: ${output}` }]);
     expect(loggingBrokerMock.logPayload).toHaveBeenCalledWith("Direction", "Narration", narration, true);
   });
 
@@ -533,7 +533,7 @@ describe("RunManagementService run logic", () => {
     await runManagementService.runWithEvents(createPromptRequest(createRandomString()), emit);
 
     // then
-    expect(events).toEqual([
+    expect(withoutUsage(events)).toEqual([
       { type: "Narration", content: `Running ${toolName} with ${payload}` },
       { type: "Narration", content: `${toolName} finished` },
       { type: "Tool", content: `${toolName}: ${output}` },
