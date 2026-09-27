@@ -119,7 +119,8 @@ export class BrainService {
 
               // A piece with nothing in it is the stream saying it has begun. It stops the clock
               // above and is not voiced: silence handed on as speech is noise for whoever listens.
-              if (delta.content.length === 0 && delta.narration.length === 0) {
+              // A piece of a call's arguments is not silence: nobody reads it, and it is spent.
+              if (delta.content.length === 0 && delta.narration.length === 0 && (delta.written ?? "").length === 0) {
                 continue;
               }
 
