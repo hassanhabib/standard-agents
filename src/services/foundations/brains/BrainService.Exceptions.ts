@@ -1,5 +1,6 @@
 import type { LoggingBroker } from "../../../brokers/loggings/LoggingBroker.js";
 import { HttpResponseException } from "../../../models/brokers/https/HttpResponseException.js";
+import { BusyBrainException } from "../../../models/foundations/brains/exceptions/BusyBrainException.js";
 import { BrainDependencyException } from "../../../models/foundations/brains/exceptions/BrainDependencyException.js";
 import { BrainDependencyValidationException } from "../../../models/foundations/brains/exceptions/BrainDependencyValidationException.js";
 import { BrainServiceException } from "../../../models/foundations/brains/exceptions/BrainServiceException.js";
@@ -53,6 +54,18 @@ export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
         );
       }
 
+      // The service said "not now", and usually said for how long. The wait it named is the one
+      // number worth giving whoever is waiting, so it is kept rather than dropped with the header.
+      if (error instanceof HttpResponseException && error.status === 429) {
+        throw await createAndLogDependencyException(
+          loggingBroker,
+          new BusyBrainException(
+            `the model service is taking too many requests right now (429). ${howLongToWait(error.retryAfter)}`,
+            error,
+          ),
+        );
+      }
+
       // Something answered at that address and it is not a chat endpoint, or the model is not
       // installed there. Configuration, so critical, and said as the two things to check.
       if (error instanceof HttpResponseException && error.status === 404) {
@@ -92,6 +105,20 @@ export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
       throw await createAndLogServiceException(loggingBroker, failedBrainServiceException);
     }
   };
+}
+
+// Retry-After as a sentence. A whole number of seconds is said as that; anything else, a date or
+// nothing at all, is "a moment", because a guess dressed as a number is worse than no number.
+function howLongToWait(retryAfter: string | null): string {
+  const trimmed = (retryAfter ?? "").trim();
+
+  if (!/^\d+$/.test(trimmed)) {
+    return "Try again in a moment.";
+  }
+
+  const seconds = Number(trimmed);
+
+  return `Try again in ${String(seconds)} ${seconds === 1 ? "second" : "seconds"}.`;
 }
 
 async function createAndLogValidationException(

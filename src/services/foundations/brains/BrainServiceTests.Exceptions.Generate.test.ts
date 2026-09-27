@@ -202,7 +202,7 @@ describe("BrainService generate exceptions", () => {
     },
   );
 
-  it.each([500, 503, 429])(
+  it.each([500, 503])(
     "ShouldThrowDependencyExceptionOnGenerateIfDependencyErrorOccursAndLogItAsync (%i)",
     async (status) => {
       // given
