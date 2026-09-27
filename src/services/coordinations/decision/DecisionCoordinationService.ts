@@ -1,4 +1,5 @@
 import type { LoggingBroker } from "../../../brokers/loggings/LoggingBroker.js";
+import type { AgentUsage } from "../../../models/foundations/usages/AgentUsage.js";
 import type { GenerationDelta } from "../../../models/brokers/generators/v1/GenerationDelta.js";
 import type { AgentContext } from "../../../models/orchestrations/agents/AgentContext.js";
 import type { GuardianOrchestrationService } from "../../orchestrations/decision/guardians/GuardianOrchestrationService.js";
@@ -53,6 +54,7 @@ export class DecisionCoordinationService {
   public thinkStream(
     context: AgentContext,
     voice: (delta: GenerationDelta) => Promise<void>,
+    _spend?: (soFar: AgentUsage) => Promise<void>,
   ): Promise<AgentContext> {
     return this.sequence(context, async (resolved) => await this.inferenceOrchestrationService.decideStream(resolved, voice));
   }
