@@ -4,6 +4,31 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.15.0]
+
+Tracks SPEC v1.16, section 4.14.1 (spending).
+
+### Added
+
+- **A run says what it is spending while a call is answered.** A `Usage` event arrives when a call
+  ends, and a call can take minutes: the first person to watch one saw the count stand still while
+  a model wrote a file. The stream now carries `Spending` events between sending a call and its
+  `Usage`. Each is the run's settled total plus this call's own estimate: the prompt, counted the
+  moment the call is sent, and what has come back so far, whether it is words, narration, a call's
+  arguments or the model's reasoning. Always estimated, never what the budget reads, and
+  superseded by the call's `Usage`. Said when a call is sent, then each time the count has moved
+  by 25 or more, so a file written a few characters at a time is not a thousand events. The native
+  streamed door only; a text brain answers whole and has nothing to say in between.
+- `GenerationDelta.written`: what the model wrote in a frame that nobody reads (a piece of a call's
+  arguments, or of `reasoning_content`), handed up to be counted and never voiced.
+- `decideStream` and `thinkStream` take an optional third argument that hears what the call has
+  spent so far.
+
+### Upgrading
+
+A consumer that switches on an event's `type` sees a seventh kind, `Spending`. One that reads only
+`Usage` reads exactly what it did before.
+
 ## [0.14.1]
 
 ### Fixed
