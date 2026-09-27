@@ -1,5 +1,6 @@
 import type { LoggingBroker } from "../../../../brokers/loggings/LoggingBroker.js";
 import type { GenerationDelta } from "../../../../models/brokers/generators/v1/GenerationDelta.js";
+import type { AgentUsage } from "../../../../models/foundations/usages/AgentUsage.js";
 import type { ToolDefinition } from "../../../../models/brokers/generators/v1/ToolDefinition.js";
 import { AgentRun } from "../../../../models/loggings/AgentRun.js";
 import type { AgentContext } from "../../../../models/orchestrations/agents/AgentContext.js";
@@ -51,7 +52,15 @@ export class InferenceOrchestrationService {
   // turn, so its answer is voiced once when it lands: later than a native brain's, and the same
   // answer. The alternative, refusing the streamed door on a text profile, would make the door a
   // property of the provider rather than of the agent.
-  public decideStream(context: AgentContext, voice: (delta: GenerationDelta) => Promise<void>): Promise<AgentContext> {
+  //
+  // spend hears what this call has spent while it is answered: the prompt the moment it is sent,
+  // and what comes back piece by piece. Always estimated, because nothing has been reported yet
+  // (SPEC.md 4.14.1, spending). The decision it reaches carries the call's settled usage as before.
+  public decideStream(
+    context: AgentContext,
+    voice: (delta: GenerationDelta) => Promise<void>,
+    _spend?: (soFar: AgentUsage) => Promise<void>,
+  ): Promise<AgentContext> {
     return this.tryCatch(async () => {
       if (!this.brainService.speaksNatively) {
         const decided = await this.decideTextually(context);
