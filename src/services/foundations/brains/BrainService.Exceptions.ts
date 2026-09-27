@@ -10,6 +10,7 @@ import { FailedBrainServiceException } from "../../../models/foundations/brains/
 import { InvalidBrainException } from "../../../models/foundations/brains/exceptions/InvalidBrainException.js";
 import { NotFoundBrainException } from "../../../models/foundations/brains/exceptions/NotFoundBrainException.js";
 import { RefusedBrainException } from "../../../models/foundations/brains/exceptions/RefusedBrainException.js";
+import { UnavailableBrainException } from "../../../models/foundations/brains/exceptions/UnavailableBrainException.js";
 import { UnreachableBrainException } from "../../../models/foundations/brains/exceptions/UnreachableBrainException.js";
 
 // The exception partial (SPEC-cli 3.1): the brain family's categories, each localising the
@@ -21,6 +22,7 @@ import { UnreachableBrainException } from "../../../models/foundations/brains/ex
 export type TryCatch = <T>(routine: () => Promise<T>) => Promise<T>;
 
 const REFUSED_STATUSES = new Set([401, 403]);
+const UNAVAILABLE_STATUSES = new Set([408, 502, 503, 504]);
 
 export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
   return async function tryCatch<T>(routine: () => Promise<T>): Promise<T> {
@@ -61,6 +63,18 @@ export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
           loggingBroker,
           new BusyBrainException(
             `the model service is taking too many requests right now (429). ${howLongToWait(error.retryAfter)}`,
+            error,
+          ),
+        );
+      }
+
+      // The service, or the gateway in front of it, cannot answer right now. Waiting is usually
+      // the whole remedy, so the sentence says to wait, and for how long when the service said.
+      if (error instanceof HttpResponseException && UNAVAILABLE_STATUSES.has(error.status)) {
+        throw await createAndLogDependencyException(
+          loggingBroker,
+          new UnavailableBrainException(
+            `the model service is not available right now (${String(error.status)}). ${howLongToWait(error.retryAfter)}`,
             error,
           ),
         );
