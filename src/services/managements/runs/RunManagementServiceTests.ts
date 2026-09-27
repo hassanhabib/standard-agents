@@ -9,6 +9,7 @@ import type { DirectionCoordinationService } from "../../coordinations/direction
 import type { TimeBroker } from "../../../brokers/times/TimeBroker.js";
 import type { AgentSession } from "../../../models/brokers/sessions/AgentSession.js";
 import type { AgentStreamEvent } from "../../../models/clients/agents/AgentStreamEvent.js";
+import { AgentRun } from "../../../models/loggings/AgentRun.js";
 import { createRunOptions, type RunOptions } from "../../../models/managements/runs/RunOptions.js";
 import type { AgentContext } from "../../../models/orchestrations/agents/AgentContext.js";
 import { RunManagementService } from "./RunManagementService.js";
@@ -115,6 +116,23 @@ export function actedReplay(context: AgentContext, output: string): AgentContext
   const last = acted.toolExchanges.at(-1);
 
   return last === undefined ? acted : { ...acted, toolExchanges: [...acted.toolExchanges.slice(0, -1), { ...last, replayed: true }] };
+}
+
+// The same replay on the text protocol, where there is no call id and so no exchange to say it:
+// the direction coordination counts it on the run, which is the one record every protocol shares.
+export function actedTextReplay(context: AgentContext, output: string, idempotencyKey: string): AgentContext {
+  AgentRun.current()?.recordReplay(idempotencyKey);
+
+  return actedTextTool(context, output);
+}
+
+export function actedTextTool(context: AgentContext, output: string): AgentContext {
+  return {
+    ...context,
+    result: output,
+    observations: [...context.observations, `${context.directionType}: ${output}`],
+    status: "Working",
+  };
 }
 
 export function actedTool(context: AgentContext, output: string): AgentContext {

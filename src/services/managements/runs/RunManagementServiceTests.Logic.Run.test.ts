@@ -4,7 +4,7 @@ import { createPromptRequest } from "../../../models/clients/agents/PromptReques
 import { createAgentBudget } from "../../../models/coordinations/agents/AgentBudget.js";
 import { AgentRun } from "../../../models/loggings/AgentRun.js";
 import { DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE } from "../../../models/brokers/generators/ResolvedInference.js";
-import { actedReplay, actedResponse, actedTool, collectEvents, createRandomString, createRunManagementServiceTests, recalled, thoughtAnswer, thoughtTool, verifyNoOtherCalls } from "./RunManagementServiceTests.js";
+import { actedReplay, actedResponse, actedTextReplay, actedTextTool, actedTool, collectEvents, createRandomString, createRunManagementServiceTests, recalled, thoughtAnswer, thoughtTool, verifyNoOtherCalls } from "./RunManagementServiceTests.js";
 
 describe("RunManagementService run logic", () => {
   it("ShouldRunToAnAnswerAsync", async () => {
@@ -164,6 +164,36 @@ describe("RunManagementService run logic", () => {
     expect(events[events.length - 1]).toEqual({ type: "Status", content: expectedMessage });
     expect(loggingBrokerMock.logOutcome).toHaveBeenCalledWith(`stopped: ${expectedMessage}`);
     verifyNoOtherCalls(decisionCoordinationServiceMock, { think: 8 });
+    verifyNoOtherCalls(directionCoordinationServiceMock, { act: 8 });
+  });
+
+  it("ShouldStopWhenTheSameActIsAskedForTooOftenWithoutACallIdAsync", async () => {
+    // given
+    // The same run on the text protocol: no call ids, so no exchange says "replayed", and a loop
+    // that counted only exchanges ran this to its turn cap. Watched in both implementations: a
+    // model on the text protocol asked eleven more times with the note in front of it.
+    const { dataCoordinationServiceMock, decisionCoordinationServiceMock, directionCoordinationServiceMock, runManagementService } =
+      createRunManagementServiceTests({ maxTurns: 64 });
+
+    const idempotencyKey = createRandomString();
+    let asks = 0;
+    dataCoordinationServiceMock.retrieveRemoteTools.mockResolvedValue([]);
+    dataCoordinationServiceMock.recall.mockImplementation(async (context) => recalled(context));
+    decisionCoordinationServiceMock.think.mockImplementation(async (context) => thoughtTool(context, "read_file", "index.html"));
+
+    // The first ask runs; every one after it is answered from the ledger, counted on the run.
+    directionCoordinationServiceMock.act.mockImplementation(async (context) => {
+      asks += 1;
+
+      return asks === 1 ? actedTextTool(context, "the same page") : actedTextReplay(context, "the same page", idempotencyKey);
+    });
+
+    // when
+    const actualOutcome = await runManagementService.run(createPromptRequest(createRandomString()));
+
+    // then
+    expect(actualOutcome.status).toBe("Failed");
+    expect(actualOutcome.failure?.code).toBe("going_in_circles");
     verifyNoOtherCalls(directionCoordinationServiceMock, { act: 8 });
   });
 
