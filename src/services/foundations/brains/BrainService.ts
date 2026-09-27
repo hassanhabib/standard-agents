@@ -130,7 +130,7 @@ export class BrainService {
             // lands in the same moment is still what it is, and is reported as that.
             if (firstPiece.gaveUp() && isAbort(error)) {
               throw new TimedOutBrainException(
-                `the model service did not start answering within ${String(FIRST_PIECE_SECONDS)} seconds. Check that it is running and not overloaded.`,
+                `the model service did not answer within ${String(FIRST_PIECE_MINUTES)} minutes. Check that it is running and not overloaded.`,
               );
             }
 
@@ -248,7 +248,7 @@ export class BrainService {
     const givingUp = new AbortController();
     const calledOff = new AbortController();
 
-    void this.timeBroker.delay(FIRST_PIECE_SECONDS * 1_000, calledOff.signal).then(
+    void this.timeBroker.delay(FIRST_PIECE_MINUTES * 60_000, calledOff.signal).then(
       () => givingUp.abort(),
       () => undefined,
     );
@@ -283,7 +283,11 @@ export class BrainService {
   }
 }
 
-const FIRST_PIECE_SECONDS = 30;
+// Four minutes, not thirty seconds. A Host that sends nothing, not even its headers, until the whole answer
+// is ready cannot be told from one that has hung, and a coding turn with a long history on somebody's
+// own hardware takes longer than thirty seconds to be ready. Four is long enough for that, and short
+// enough to be said before the platform gives up at five with "nothing answered", which is wrong.
+const FIRST_PIECE_MINUTES = 4;
 
 interface FirstPieceWait {
   readonly signal: AbortSignal;
