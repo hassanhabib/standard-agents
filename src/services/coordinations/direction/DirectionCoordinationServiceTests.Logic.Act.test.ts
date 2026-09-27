@@ -85,7 +85,16 @@ describe("DirectionCoordinationService act logic", () => {
     expect(perimeterOrchestrationServiceMock.claim).toHaveBeenCalledWith(expectedEffect);
     expect(executionOrchestrationServiceMock.run).toHaveBeenCalledWith(context.directionType, context.payload, undefined);
     expect(perimeterOrchestrationServiceMock.recordOutcome).toHaveBeenCalledWith(expectedEffect, output);
-    expect(performed).toEqual([{ toolName: context.directionType, arguments: context.payload, outcome: output, idempotencyKey: expectedEffect.idempotencyKey }]);
+    expect(performed).toEqual([
+      {
+        toolName: context.directionType,
+        arguments: context.payload,
+        outcome: output,
+        idempotencyKey: expectedEffect.idempotencyKey,
+        scope: expectedEffect.scope,
+        riskLevel: expectedEffect.riskLevel,
+      },
+    ]);
     expect(loggingBrokerMock.logPayload).toHaveBeenNthCalledWith(1, "Direction", `Tool '${context.directionType}' input`, context.payload, true);
     expect(loggingBrokerMock.logPayload).toHaveBeenNthCalledWith(2, "Direction", `Tool '${context.directionType}' output`, output, false);
     verifyNoOtherCalls(perimeterOrchestrationServiceMock, { authorize: 1, claim: 1, recordOutcome: 1 });

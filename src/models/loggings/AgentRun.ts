@@ -87,6 +87,15 @@ export class AgentRun {
     this.performed.push(effect);
   }
 
+  // How many acts this run has performed on a scope that were not Safe: what a look at that scope
+  // would see has changed that many times since the run began (SPEC.md 4.9, v1.14). Counted from
+  // what the run performed, so it holds on every protocol, not only the one that carries exchanges.
+  public writesTo(scope: string): number {
+    return this.performed.filter(
+      (performed) => performed.riskLevel !== undefined && performed.riskLevel !== "Safe" && performed.scope === scope,
+    ).length;
+  }
+
   // The next record number for this run, monotonic from zero, and the process number within
   // the current step, restarted when a step begins.
   public nextSequence(): number {
