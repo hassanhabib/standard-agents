@@ -17,14 +17,17 @@ import { UnreachableBrainException } from "../../../models/foundations/brains/ex
 import { createBrainServiceTests, createRandomString, expectSameExceptionAs, verifyNoOtherCalls } from "./BrainServiceTests.js";
 
 describe("BrainService generate exceptions", () => {
-  it("ShouldThrowDependencyValidationExceptionOnGenerateIfBadRequestErrorOccursAndLogItAsync", async () => {
+  it("ShouldThrowDependencyValidationExceptionOnGenerateIfBadRequestErrorOccursAndSayWhyLastAsync", async () => {
     // given
+    // The service said what was wrong with the request, and the window said "Invalid brain request.
+    // Please correct the error and try again", which asks somebody to correct an error it did not
+    // name. The reason is kept as the end of the sentence; the body is still kept whole in the data.
     const { generatorBrokerMock, loggingBrokerMock, brainService } = createBrainServiceTests();
-    const responseBody = createRandomString();
+    const responseBody = JSON.stringify({ error: { message: "temperature must be between 0 and 2" } });
     const badRequestException = new HttpResponseException(400, responseBody);
 
     const invalidBrainException = new InvalidBrainException(
-      "Invalid brain request. Please correct the error and try again.",
+      "the model service could not accept the request (400): temperature must be between 0 and 2.",
     );
 
     invalidBrainException.upsertDataList("status", "400");
@@ -46,6 +49,7 @@ describe("BrainService generate exceptions", () => {
     expect(actualException).toBeInstanceOf(BrainDependencyValidationException);
     expectSameExceptionAs(actualException, expectedBrainDependencyValidationException);
     expectSameExceptionAs(loggingBrokerMock.logError.mock.calls[0]?.[0], expectedBrainDependencyValidationException);
+    expect(innermostMessageOf(actualException)).toBe(invalidBrainException.message);
     verifyNoOtherCalls(generatorBrokerMock, { generate: 1 });
     verifyNoOtherCalls(loggingBrokerMock, { logError: 1 });
   });
