@@ -5,6 +5,7 @@ import { BrainDependencyException } from "../../../models/foundations/brains/exc
 import { BrainDependencyValidationException } from "../../../models/foundations/brains/exceptions/BrainDependencyValidationException.js";
 import { BrainServiceException } from "../../../models/foundations/brains/exceptions/BrainServiceException.js";
 import { BrainValidationException } from "../../../models/foundations/brains/exceptions/BrainValidationException.js";
+import { FaultedBrainException } from "../../../models/foundations/brains/exceptions/FaultedBrainException.js";
 import { FailedBrainDependencyException } from "../../../models/foundations/brains/exceptions/FailedBrainDependencyException.js";
 import { FailedBrainServiceException } from "../../../models/foundations/brains/exceptions/FailedBrainServiceException.js";
 import { InvalidBrainException } from "../../../models/foundations/brains/exceptions/InvalidBrainException.js";
@@ -102,6 +103,18 @@ export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
           loggingBroker,
           new UnreachableBrainException(
             "nothing answered at that address. Check that it is right and that the service is running.",
+            error,
+          ),
+        );
+      }
+
+      // A fault of the service's own. Trying again may pass, and one that keeps coming back is the
+      // service's to fix rather than the person's, which is worth them knowing.
+      if (error instanceof HttpResponseException && error.status >= 500) {
+        throw await createAndLogDependencyException(
+          loggingBroker,
+          new FaultedBrainException(
+            `the model service failed while answering (${String(error.status)}). Try again; if it keeps happening, the service needs looking at.`,
             error,
           ),
         );
