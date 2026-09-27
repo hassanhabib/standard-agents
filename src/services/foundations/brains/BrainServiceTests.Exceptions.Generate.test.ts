@@ -11,6 +11,7 @@ import { FailedBrainServiceException } from "../../../models/foundations/brains/
 import { InvalidBrainException } from "../../../models/foundations/brains/exceptions/InvalidBrainException.js";
 import { NotFoundBrainException } from "../../../models/foundations/brains/exceptions/NotFoundBrainException.js";
 import { RefusedBrainException } from "../../../models/foundations/brains/exceptions/RefusedBrainException.js";
+import { RejectedBrainException } from "../../../models/foundations/brains/exceptions/RejectedBrainException.js";
 import { UnavailableBrainException } from "../../../models/foundations/brains/exceptions/UnavailableBrainException.js";
 import { UnreachableBrainException } from "../../../models/foundations/brains/exceptions/UnreachableBrainException.js";
 import { createBrainServiceTests, createRandomString, expectSameExceptionAs, verifyNoOtherCalls } from "./BrainServiceTests.js";
@@ -240,6 +241,41 @@ describe("BrainService generate exceptions", () => {
       expectSameExceptionAs(actualException, expectedBrainDependencyException);
       expectSameExceptionAs(loggingBrokerMock.logError.mock.calls[0]?.[0], expectedBrainDependencyException);
       expect(innermostMessageOf(actualException)).toBe(unavailableBrainException.message);
+      verifyNoOtherCalls(loggingBrokerMock, { logError: 1 });
+    },
+  );
+
+  it.each([
+    [409, JSON.stringify({ error: { message: "the model is still loading" } }), "the model service refused the request (409): the model is still loading."],
+    [402, "insufficient tokens for this request", "the model service refused the request (402): insufficient tokens for this request."],
+    [422, "<!DOCTYPE html><html><body>Unprocessable</body></html>", "the model service refused the request (422)."],
+  ])(
+    "ShouldThrowDependencyExceptionOnGenerateIfTheServiceRejectsTheRequestAndSayWhyLastAsync (%i)",
+    async (status, body, sentence) => {
+      // given
+      // A 4xx that is not a key, an address or an overload is the service turning this request down
+      // for a reason of its own, and it usually says which. Both doors dropped it and showed the
+      // status. An HTML page is not a reason, so it is left out rather than pasted in.
+      const { generatorBrokerMock, loggingBrokerMock, brainService } = createBrainServiceTests();
+      const rejectedException = new HttpResponseException(status, body);
+      const rejectedBrainException = new RejectedBrainException(sentence, rejectedException);
+
+      const expectedBrainDependencyException = new BrainDependencyException(
+        "Brain dependency error occurred, contact support.",
+        new FailedBrainDependencyException("Failed brain dependency error occurred, contact support.", rejectedBrainException),
+      );
+
+      generatorBrokerMock.generate.mockRejectedValue(rejectedException);
+
+      // when
+      const generateTask = brainService.generate(createRandomString(), createRandomString());
+
+      // then
+      const actualException = await generateTask.then(() => undefined, (error: unknown) => error);
+
+      expect(actualException).toBeInstanceOf(BrainDependencyException);
+      expectSameExceptionAs(actualException, expectedBrainDependencyException);
+      expect(innermostMessageOf(actualException)).toBe(sentence);
       verifyNoOtherCalls(loggingBrokerMock, { logError: 1 });
     },
   );
