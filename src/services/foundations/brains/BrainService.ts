@@ -117,6 +117,12 @@ export class BrainService {
                 continue;
               }
 
+              // A piece with nothing in it is the stream saying it has begun. It stops the clock
+              // above and is not voiced: silence handed on as speech is noise for whoever listens.
+              if (delta.content.length === 0 && delta.narration.length === 0) {
+                continue;
+              }
+
               await voice(delta);
             }
           } catch (error: unknown) {

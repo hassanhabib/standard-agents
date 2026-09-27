@@ -46,10 +46,45 @@ describe("HttpGeneratorBrokerV1 generateStream logic", () => {
     expect(requests[0]?.headers["accept"]).toBe("text/event-stream");
     expect(requests[0]?.body["stream"]).toBe(true);
 
-    expect(deltas.map((delta) => delta.narration)).toEqual(["Reading the entry point.", "", "", ""]);
-    expect(deltas.map((delta) => delta.content)).toEqual(["", "two", " packages", ""]);
+    // What was said, in order, rather than every piece: a stream may say it has begun with an empty
+    // piece before it says anything.
+    expect(deltas.map((delta) => delta.narration).filter((said) => said.length > 0)).toEqual(["Reading the entry point."]);
+    expect(deltas.map((delta) => delta.content).filter((said) => said.length > 0)).toEqual(["two", " packages"]);
     expect(deltas.at(-1)?.completed?.content).toBe("two packages");
     expect(deltas.at(-1)?.completed?.headers["x-example-decider"]).toBe("peer-7");
   });
 
+  it("ShouldSayTheStreamHasBegunAsSoonAsTheServiceAnswersAsync", async () => {
+    // given
+    // A turn that is a tool call, from a Host on somebody's own hardware: the role frame at once,
+    // then the call's arguments frame by frame, and not one word of content. Nothing was handed up
+    // until the whole turn had finished, so the brain's first-piece clock ran out on a Host that
+    // had answered in two seconds and was plainly working.
+    const transcript = [
+      'data: {"choices":[{"delta":{"role":"assistant"}}]}',
+      "",
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"read_file","arguments":"{\\"path\\":"}}]}}]}',
+      "",
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"a.txt\\"}"}}]},"finish_reason":"tool_calls"}]}',
+      "",
+      "data: [DONE]",
+      "",
+      "",
+    ].join("\n");
+
+    const { generatorBroker } = createHttpGeneratorBrokerV1Tests(() => streamResponse(transcript));
+
+    // when
+    const deltas: GenerationDelta[] = [];
+
+    for await (const delta of generatorBroker.generateStream([userMessage("read a.txt")], [])) {
+      deltas.push(delta);
+    }
+
+    // then
+    // The first thing handed up is an empty piece saying the stream has begun, before the turn is
+    // complete, and the turn itself still arrives whole at the end.
+    expect(deltas[0]).toEqual({ content: "", narration: "", completed: null });
+    expect(deltas.at(-1)?.completed?.toolCalls[0]?.name).toBe("read_file");
+  });
 });
