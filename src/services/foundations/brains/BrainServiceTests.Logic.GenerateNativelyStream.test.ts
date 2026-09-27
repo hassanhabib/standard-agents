@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createGenerationResult } from "../../../brokers/generators/FunctionGeneratorBrokerV1.js";
+import { HttpResponseException } from "../../../models/brokers/https/HttpResponseException.js";
 import { BrainServiceException } from "../../../models/foundations/brains/exceptions/BrainServiceException.js";
 import { createNativeAsk } from "../../../models/foundations/brains/NativeAsk.js";
 import { createRandomString } from "./BrainServiceTests.js";
@@ -33,6 +34,43 @@ describe("BrainService native streaming", () => {
       { content: "", narration: "Reading first." },
       { content: "Hello ", narration: "" },
       { content: "there.", narration: "" },
+    ]);
+  });
+
+  it("ShouldSayItIsWaitingOnABusyServiceBeforeAskingOnceMoreAsync", async () => {
+    // given
+    // A wait nobody is told about is a window that has stopped for no reason. The service said it
+    // was busy and how long to wait, and whoever is watching hears that before the pause, on the
+    // same channel the model's own progress lines use.
+    const { generatorBrokerV1Mock, timeBrokerMock, brainService } = createNativeBrainServiceTests();
+    const completed = createGenerationResult({ content: "done" });
+    let asks = 0;
+
+    generatorBrokerV1Mock.generateStream.mockImplementation(async function* () {
+      asks += 1;
+
+      if (asks === 1) {
+        throw new HttpResponseException(503, "busy", "5");
+      }
+
+      yield { content: "done", narration: "", completed: null };
+      yield { content: "", narration: "", completed };
+    });
+
+    const voiced: Array<{ content: string; narration: string }> = [];
+
+    // when
+    const actualGeneration = await brainService.generateNativelyStream(createNativeAsk("go"), async (delta) => {
+      voiced.push({ content: delta.content, narration: delta.narration });
+    });
+
+    // then
+    expect(actualGeneration).toBe(completed);
+    expect(timeBrokerMock.delay).toHaveBeenCalledTimes(1);
+
+    expect(voiced).toEqual([
+      { content: "", narration: "The model service is busy (503), so I am trying again in 5 seconds." },
+      { content: "done", narration: "" },
     ]);
   });
 
