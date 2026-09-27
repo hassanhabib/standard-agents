@@ -10,6 +10,7 @@ import type { GenerationResult } from "../../../models/brokers/generators/v1/Gen
 import { StreamInterruptedException } from "../../../models/brokers/generators/v1/StreamInterruptedException.js";
 import { HttpResponseException } from "../../../models/brokers/https/HttpResponseException.js";
 import { ContextTooLargeException } from "../../../models/foundations/brains/exceptions/ContextTooLargeException.js";
+import { TimedOutBrainException } from "../../../models/foundations/brains/exceptions/TimedOutBrainException.js";
 import { createNativeOptions, type NativeAsk, type NativeOptions } from "../../../models/foundations/brains/NativeAsk.js";
 import { createTryCatch, type TryCatch } from "./BrainService.Exceptions.js";
 import { buildConversation, ladderRungs, overContextBudget } from "./BrainService.Native.js";
@@ -102,15 +103,32 @@ export class BrainService {
 
       return await this.overLadder(ask, async (messages) =>
         await this.onceMoreIfBusy(async () => {
+          const firstPiece = this.startFirstPieceWait(signal);
           let completed: GenerationResult | null = null;
 
-          for await (const delta of broker.generateStream(messages, ask.tools, ask.inference ?? undefined, signal)) {
-            if (delta.completed !== null) {
-              completed = delta.completed;
-              continue;
+          try {
+            for await (const delta of broker.generateStream(messages, ask.tools, ask.inference ?? undefined, firstPiece.signal)) {
+              firstPiece.arrived();
+
+              if (delta.completed !== null) {
+                completed = delta.completed;
+                continue;
+              }
+
+              await voice(delta);
+            }
+          } catch (error: unknown) {
+            // Only the abort this wait caused is a timeout. A status or a dropped connection that
+            // lands in the same moment is still what it is, and is reported as that.
+            if (firstPiece.gaveUp() && isAbort(error)) {
+              throw new TimedOutBrainException(
+                `the model service did not start answering within ${String(FIRST_PIECE_SECONDS)} seconds. Check that it is running and not overloaded.`,
+              );
             }
 
-            await voice(delta);
+            throw error;
+          } finally {
+            firstPiece.arrived();
           }
 
           // A stream that ended without its completed delta finished nothing. The reader raises for
@@ -200,6 +218,30 @@ export class BrainService {
     }
   }
 
+  // How long a streamed turn waits for its first piece. A service that took the request and says
+  // nothing back otherwise leaves a window spinning for the platform's own timeout, which is
+  // minutes. Only the first piece: once the answer has started it may take as long as it takes,
+  // because a long answer is not a slow one.
+  //
+  // A clock the service can stop, rather than the platform's timeout signal, because a timeout
+  // signal cannot be called off once the first piece is in hand, and it would cut a long answer
+  // short in the middle. The person's own stop still reaches the request through the same signal.
+  private startFirstPieceWait(stop?: AbortSignal): FirstPieceWait {
+    const givingUp = new AbortController();
+    const calledOff = new AbortController();
+
+    void this.timeBroker.delay(FIRST_PIECE_SECONDS * 1_000, calledOff.signal).then(
+      () => givingUp.abort(),
+      () => undefined,
+    );
+
+    return {
+      signal: stop === undefined ? givingUp.signal : AbortSignal.any([stop, givingUp.signal]),
+      arrived: () => calledOff.abort(),
+      gaveUp: () => givingUp.signal.aborted && stop?.aborted !== true,
+    };
+  }
+
   private requireNativeBroker(): GeneratorBrokerV1 {
     if (this.generatorBrokerV1 === null) {
       throw new RangeError("this brain has no native generator; the text protocol is the one in use");
@@ -221,6 +263,19 @@ export class BrainService {
       );
     }
   }
+}
+
+const FIRST_PIECE_SECONDS = 30;
+
+interface FirstPieceWait {
+  readonly signal: AbortSignal;
+  readonly arrived: () => void;
+  readonly gaveUp: () => boolean;
+}
+
+// What fetch, and a reader over its body, raise when their signal is aborted.
+function isAbort(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
 }
 
 const ONCE_MORE_STATUSES = new Set([429, 503]);

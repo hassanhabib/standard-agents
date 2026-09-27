@@ -12,6 +12,7 @@ import { InvalidBrainException } from "../../../models/foundations/brains/except
 import { MalformedBrainReplyException } from "../../../models/foundations/brains/exceptions/MalformedBrainReplyException.js";
 import { NotFoundBrainException } from "../../../models/foundations/brains/exceptions/NotFoundBrainException.js";
 import { RefusedBrainException } from "../../../models/foundations/brains/exceptions/RefusedBrainException.js";
+import { TimedOutBrainException } from "../../../models/foundations/brains/exceptions/TimedOutBrainException.js";
 import { RejectedBrainException } from "../../../models/foundations/brains/exceptions/RejectedBrainException.js";
 import { UnavailableBrainException } from "../../../models/foundations/brains/exceptions/UnavailableBrainException.js";
 import { UnreachableBrainException } from "../../../models/foundations/brains/exceptions/UnreachableBrainException.js";
@@ -93,6 +94,12 @@ export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
             error,
           ),
         );
+      }
+
+      // Nothing came back in time. The sentence is already written where the wait was kept; this is
+      // where it takes its category, a dependency that may pass.
+      if (error instanceof TimedOutBrainException) {
+        throw await createAndLogDependencyException(loggingBroker, error);
       }
 
       // Something answered, and what it sent is not JSON: a page of HTML, most often, from a web

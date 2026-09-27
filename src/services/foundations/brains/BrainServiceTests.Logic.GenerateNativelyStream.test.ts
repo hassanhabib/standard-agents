@@ -67,7 +67,9 @@ describe("BrainService native streaming", () => {
 
     // then
     expect(actualGeneration).toBe(completed);
-    expect(timeBrokerMock.delay).toHaveBeenCalledTimes(1);
+
+    // The wait the service named, beside the first-piece clock each attempt keeps.
+    expect(timeBrokerMock.delay).toHaveBeenCalledWith(5_000, undefined);
 
     expect(voiced).toEqual([
       { content: "", narration: "The model service is busy (503), so I am trying again in 5 seconds." },
