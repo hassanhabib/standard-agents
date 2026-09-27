@@ -10,6 +10,7 @@ import { FailedBrainServiceException } from "../../../models/foundations/brains/
 import { InvalidBrainException } from "../../../models/foundations/brains/exceptions/InvalidBrainException.js";
 import { NotFoundBrainException } from "../../../models/foundations/brains/exceptions/NotFoundBrainException.js";
 import { RefusedBrainException } from "../../../models/foundations/brains/exceptions/RefusedBrainException.js";
+import { UnavailableBrainException } from "../../../models/foundations/brains/exceptions/UnavailableBrainException.js";
 import { UnreachableBrainException } from "../../../models/foundations/brains/exceptions/UnreachableBrainException.js";
 import { createBrainServiceTests, createRandomString, expectSameExceptionAs, verifyNoOtherCalls } from "./BrainServiceTests.js";
 
@@ -198,6 +199,46 @@ describe("BrainService generate exceptions", () => {
       expectSameExceptionAs(actualException, expectedBrainDependencyException);
       expectSameExceptionAs(loggingBrokerMock.logError.mock.calls[0]?.[0], expectedBrainDependencyException);
       expect(innermostMessageOf(actualException)).toBe(busyBrainException.message);
+      verifyNoOtherCalls(loggingBrokerMock, { logError: 1 });
+    },
+  );
+
+  it.each([
+    [503, "12", "Try again in 12 seconds."],
+    [502, null, "Try again in a moment."],
+    [504, null, "Try again in a moment."],
+    [408, null, "Try again in a moment."],
+  ])(
+    "ShouldThrowDependencyExceptionOnGenerateIfTheServiceIsUnavailableAndSayItLastAsync (%i)",
+    async (status, retryAfter, wait) => {
+      // given
+      // The service, or the gateway in front of it, cannot answer right now. Watched on a Host
+      // restarting: the window said "HTTP 503", which is true and says nothing about waiting.
+      const { generatorBrokerMock, loggingBrokerMock, brainService } = createBrainServiceTests();
+      const unavailableException = new HttpResponseException(status, createRandomString(), retryAfter);
+
+      const unavailableBrainException = new UnavailableBrainException(
+        `the model service is not available right now (${String(status)}). ${wait}`,
+        unavailableException,
+      );
+
+      const expectedBrainDependencyException = new BrainDependencyException(
+        "Brain dependency error occurred, contact support.",
+        new FailedBrainDependencyException("Failed brain dependency error occurred, contact support.", unavailableBrainException),
+      );
+
+      generatorBrokerMock.generate.mockRejectedValue(unavailableException);
+
+      // when
+      const generateTask = brainService.generate(createRandomString(), createRandomString());
+
+      // then
+      const actualException = await generateTask.then(() => undefined, (error: unknown) => error);
+
+      expect(actualException).toBeInstanceOf(BrainDependencyException);
+      expectSameExceptionAs(actualException, expectedBrainDependencyException);
+      expectSameExceptionAs(loggingBrokerMock.logError.mock.calls[0]?.[0], expectedBrainDependencyException);
+      expect(innermostMessageOf(actualException)).toBe(unavailableBrainException.message);
       verifyNoOtherCalls(loggingBrokerMock, { logError: 1 });
     },
   );
