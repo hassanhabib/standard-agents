@@ -152,6 +152,10 @@ export class DirectionCoordinationService {
     const claim = await this.perimeterOrchestrationService.claim(effect);
 
     if (claim.verdict === "Replay") {
+      // Counted on the run, which every protocol shares, so the loop can tell a run going in
+      // circles on the text protocol too (SPEC.md 4.10, v1.14).
+      AgentRun.current()?.recordReplay(effect.idempotencyKey);
+
       // Once is a replay, with a note saying so. From the third identical call on it is the note
       // alone: the bytes have been handed back twice, and a third copy costs the person context and
       // buys the model nothing it did not already have.
