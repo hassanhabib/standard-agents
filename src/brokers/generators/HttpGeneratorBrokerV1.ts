@@ -58,7 +58,7 @@ export class HttpGeneratorBrokerV1 implements GeneratorBrokerV1 {
     const body = await response.text();
 
     if (!response.ok) {
-      throw new HttpResponseException(response.status, body);
+      throw new HttpResponseException(response.status, body, response.headers.get("retry-after"));
     }
 
     return readGeneration(JSON.parse(body) as ChatCompletionResponse, readHeaders(response));
@@ -86,7 +86,7 @@ export class HttpGeneratorBrokerV1 implements GeneratorBrokerV1 {
     });
 
     if (!response.ok) {
-      throw new HttpResponseException(response.status, await response.text());
+      throw new HttpResponseException(response.status, await response.text(), response.headers.get("retry-after"));
     }
 
     const state = createStreamState();
