@@ -105,10 +105,12 @@ export class BrainService {
         await this.onceMoreIfBusy(async () => {
           const firstPiece = this.startFirstPieceWait(signal);
           let completed: GenerationResult | null = null;
+          let started = false;
 
           try {
             for await (const delta of broker.generateStream(messages, ask.tools, ask.inference ?? undefined, firstPiece.signal)) {
               firstPiece.arrived();
+              started = true;
 
               if (delta.completed !== null) {
                 completed = delta.completed;
@@ -123,6 +125,16 @@ export class BrainService {
             if (firstPiece.gaveUp() && isAbort(error)) {
               throw new TimedOutBrainException(
                 `the model service did not start answering within ${String(FIRST_PIECE_SECONDS)} seconds. Check that it is running and not overloaded.`,
+              );
+            }
+
+            // The connection went after the answer had started. fetch raises the same TypeError
+            // it raises for an address where nothing answers, and "nothing answered" under text
+            // that plainly came from there is the one sentence that cannot be true.
+            if (started && error instanceof TypeError) {
+              throw new StreamInterruptedException(
+                "truncated",
+                "the connection dropped partway through the answer. What arrived is above; ask again to finish it.",
               );
             }
 
