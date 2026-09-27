@@ -5,6 +5,7 @@ import { BusyBrainException } from "../../../models/foundations/brains/exception
 import { BrainDependencyException } from "../../../models/foundations/brains/exceptions/BrainDependencyException.js";
 import { BrainDependencyValidationException } from "../../../models/foundations/brains/exceptions/BrainDependencyValidationException.js";
 import { BrainServiceException } from "../../../models/foundations/brains/exceptions/BrainServiceException.js";
+import { FaultedBrainException } from "../../../models/foundations/brains/exceptions/FaultedBrainException.js";
 import { FailedBrainDependencyException } from "../../../models/foundations/brains/exceptions/FailedBrainDependencyException.js";
 import { FailedBrainServiceException } from "../../../models/foundations/brains/exceptions/FailedBrainServiceException.js";
 import { InvalidBrainException } from "../../../models/foundations/brains/exceptions/InvalidBrainException.js";
@@ -243,16 +244,23 @@ describe("BrainService generate exceptions", () => {
     },
   );
 
-  it.each([500])(
-    "ShouldThrowDependencyExceptionOnGenerateIfDependencyErrorOccursAndLogItAsync (%i)",
+  it.each([500, 501, 505])(
+    "ShouldThrowDependencyExceptionOnGenerateIfTheServiceFaultsAndSayItLastAsync (%i)",
     async (status) => {
       // given
+      // A fault of the service's own. "HTTP 500" is true; what somebody can do is try again, and
+      // know that a fault that keeps coming back is the service's to fix, not theirs.
       const { generatorBrokerMock, loggingBrokerMock, brainService } = createBrainServiceTests();
       const dependencyException = new HttpResponseException(status, createRandomString());
 
+      const faultedBrainException = new FaultedBrainException(
+        `the model service failed while answering (${String(status)}). Try again; if it keeps happening, the service needs looking at.`,
+        dependencyException,
+      );
+
       const failedBrainDependencyException = new FailedBrainDependencyException(
         "Failed brain dependency error occurred, contact support.",
-        dependencyException,
+        faultedBrainException,
       );
 
       const expectedBrainDependencyException = new BrainDependencyException(
@@ -271,6 +279,7 @@ describe("BrainService generate exceptions", () => {
       expect(actualException).toBeInstanceOf(BrainDependencyException);
       expectSameExceptionAs(actualException, expectedBrainDependencyException);
       expectSameExceptionAs(loggingBrokerMock.logError.mock.calls[0]?.[0], expectedBrainDependencyException);
+      expect(innermostMessageOf(actualException)).toBe(faultedBrainException.message);
       verifyNoOtherCalls(generatorBrokerMock, { generate: 1 });
       verifyNoOtherCalls(loggingBrokerMock, { logError: 1 });
     },
