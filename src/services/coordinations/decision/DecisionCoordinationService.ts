@@ -54,9 +54,9 @@ export class DecisionCoordinationService {
   public thinkStream(
     context: AgentContext,
     voice: (delta: GenerationDelta) => Promise<void>,
-    _spend?: (soFar: AgentUsage) => Promise<void>,
+    spend?: (soFar: AgentUsage) => Promise<void>,
   ): Promise<AgentContext> {
-    return this.sequence(context, async (resolved) => await this.inferenceOrchestrationService.decideStream(resolved, voice));
+    return this.sequence(context, async (resolved) => await this.inferenceOrchestrationService.decideStream(resolved, voice, spend));
   }
 
   // The guardian sequence, run once for whichever way the turn was asked. Only the decision in
