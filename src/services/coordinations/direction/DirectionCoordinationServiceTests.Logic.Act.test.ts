@@ -287,6 +287,49 @@ describe("DirectionCoordinationService act logic", () => {
     verifyNoOtherCalls(executionOrchestrationServiceMock, { run: 1 });
   });
 
+  it("ShouldReadAgainOnActWhenThisRunWroteToThePlaceSinceWithoutACallIdAsync", async () => {
+    // given
+    // The same read after the same write, on the text protocol: no call ids, so no exchanges, and
+    // the only record that the write happened is the run's own. Watched in both implementations:
+    // the count came from native exchanges, so a text-protocol run that edited a file and read it
+    // back was handed the file as it was before the edit (SPEC.md 4.9, v1.14).
+    const { perimeterOrchestrationServiceMock, executionOrchestrationServiceMock, directionCoordinationService } =
+      createDirectionCoordinationServiceTests({
+        toolRisk: new Map([
+          ["read_file", "Safe"],
+          ["write_file", "Irreversible"],
+        ]),
+        toolScope: new Map([
+          ["read_file", (input: string): string => input.split(" ")[0] ?? ""],
+          ["write_file", (input: string): string => input.split(" ")[0] ?? ""],
+        ]),
+      });
+
+    const writeContext = toolContext("write_file", "index.html version two");
+    const readContext = toolContext("read_file", "index.html");
+    perimeterOrchestrationServiceMock.authorize.mockResolvedValue(allow());
+    perimeterOrchestrationServiceMock.claim.mockResolvedValue(proceed());
+    perimeterOrchestrationServiceMock.recordOutcome.mockResolvedValue(undefined);
+    executionOrchestrationServiceMock.run.mockResolvedValueOnce("written").mockResolvedValueOnce("the file after");
+
+    // when
+    const [actualContext, runId] = await AgentRun.begin(null, undefined, async () => {
+      await directionCoordinationService.act(writeContext);
+      const acted = await directionCoordinationService.act(readContext);
+
+      return [acted, AgentRun.current()?.id ?? ""];
+    });
+
+    // then
+    // Counted from what the run performed, so it holds whichever protocol carried the calls.
+    const beforeTheWrite = createAgentEffect(runId, "read_file", "index.html", "Safe", false, null, "index.html");
+    const claimedWith = perimeterOrchestrationServiceMock.claim.mock.calls[1]?.[0] as AgentEffect;
+
+    expect(claimedWith.idempotencyKey).not.toBe(beforeTheWrite.idempotencyKey);
+    expect(actualContext.result).toBe("the file after");
+    verifyNoOtherCalls(executionOrchestrationServiceMock, { run: 2 });
+  });
+
   it("ShouldMarkAReplayedExchangeAsAReplayAsync", async () => {
     // given
     const { perimeterOrchestrationServiceMock, directionCoordinationService } = createDirectionCoordinationServiceTests();
