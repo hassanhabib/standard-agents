@@ -112,6 +112,14 @@ export { SkillServiceException } from "./models/foundations/skills/exceptions/Sk
 export { BrainService } from "./services/foundations/brains/BrainService.js";
 export { InvalidBrainException } from "./models/foundations/brains/exceptions/InvalidBrainException.js";
 export { UnreachableBrainException } from "./models/foundations/brains/exceptions/UnreachableBrainException.js";
+export { RefusedBrainException } from "./models/foundations/brains/exceptions/RefusedBrainException.js";
+export { NotFoundBrainException } from "./models/foundations/brains/exceptions/NotFoundBrainException.js";
+export { BusyBrainException } from "./models/foundations/brains/exceptions/BusyBrainException.js";
+export { UnavailableBrainException } from "./models/foundations/brains/exceptions/UnavailableBrainException.js";
+export { FaultedBrainException } from "./models/foundations/brains/exceptions/FaultedBrainException.js";
+export { RejectedBrainException } from "./models/foundations/brains/exceptions/RejectedBrainException.js";
+export { MalformedBrainReplyException } from "./models/foundations/brains/exceptions/MalformedBrainReplyException.js";
+export { TimedOutBrainException } from "./models/foundations/brains/exceptions/TimedOutBrainException.js";
 export { FailedBrainDependencyException } from "./models/foundations/brains/exceptions/FailedBrainDependencyException.js";
 export { FailedBrainServiceException } from "./models/foundations/brains/exceptions/FailedBrainServiceException.js";
 export { BrainValidationException } from "./models/foundations/brains/exceptions/BrainValidationException.js";
