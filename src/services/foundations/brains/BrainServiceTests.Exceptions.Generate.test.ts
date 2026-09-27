@@ -7,6 +7,7 @@ import { BrainServiceException } from "../../../models/foundations/brains/except
 import { FailedBrainDependencyException } from "../../../models/foundations/brains/exceptions/FailedBrainDependencyException.js";
 import { FailedBrainServiceException } from "../../../models/foundations/brains/exceptions/FailedBrainServiceException.js";
 import { InvalidBrainException } from "../../../models/foundations/brains/exceptions/InvalidBrainException.js";
+import { RefusedBrainException } from "../../../models/foundations/brains/exceptions/RefusedBrainException.js";
 import { UnreachableBrainException } from "../../../models/foundations/brains/exceptions/UnreachableBrainException.js";
 import { createBrainServiceTests, createRandomString, expectSameExceptionAs, verifyNoOtherCalls } from "./BrainServiceTests.js";
 
@@ -44,7 +45,44 @@ describe("BrainService generate exceptions", () => {
     verifyNoOtherCalls(loggingBrokerMock, { logError: 1 });
   });
 
-  it.each([401, 403, 404])(
+  it.each([401, 403])(
+    "ShouldThrowCriticalDependencyExceptionOnGenerateIfTheKeyIsRefusedAndSayItLastAsync (%i)",
+    async (status) => {
+      // given
+      // Watched in both doors: the window said "HTTP 401" and the terminal said "contact support",
+      // for a key the service would not take. The key is the thing to go and look at, and neither
+      // sentence named it.
+      const { generatorBrokerMock, loggingBrokerMock, brainService } = createBrainServiceTests();
+      const refusedException = new HttpResponseException(status, createRandomString());
+
+      const refusedBrainException = new RefusedBrainException(
+        `the model service did not accept this connection's key (${String(status)}). Check the key, and that it belongs to this service.`,
+        refusedException,
+      );
+
+      const expectedBrainDependencyException = new BrainDependencyException(
+        "Brain dependency error occurred, contact support.",
+        new FailedBrainDependencyException("Failed brain dependency error occurred, contact support.", refusedBrainException),
+      );
+
+      generatorBrokerMock.generate.mockRejectedValue(refusedException);
+
+      // when
+      const generateTask = brainService.generate(createRandomString(), createRandomString());
+
+      // then
+      const actualException = await generateTask.then(() => undefined, (error: unknown) => error);
+
+      expect(actualException).toBeInstanceOf(BrainDependencyException);
+      expectSameExceptionAs(actualException, expectedBrainDependencyException);
+      expectSameExceptionAs(loggingBrokerMock.logCritical.mock.calls[0]?.[0], expectedBrainDependencyException);
+      expect(innermostMessageOf(actualException)).toBe(refusedBrainException.message);
+      verifyNoOtherCalls(generatorBrokerMock, { generate: 1 });
+      verifyNoOtherCalls(loggingBrokerMock, { logCritical: 1 });
+    },
+  );
+
+  it.each([404])(
     "ShouldThrowCriticalDependencyExceptionOnGenerateIfCriticalErrorOccursAndLogItAsync (%i)",
     async (status) => {
       // given
