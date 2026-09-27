@@ -112,6 +112,31 @@ describe("BrainService native streaming", () => {
     );
   });
 
+  it("ShouldSayTheConnectionDroppedWhenItFailsPartwayThroughTheAnswerAsync", async () => {
+    // given
+    // Half an answer on the screen, then the socket goes. fetch raises the same TypeError it raises
+    // for an address where nothing answers, and the window said "nothing answered at that address"
+    // under text that had plainly come from there.
+    const { generatorBrokerV1Mock, brainService } = createNativeBrainServiceTests();
+
+    generatorBrokerV1Mock.generateStream.mockImplementation(async function* () {
+      yield { content: "The first half ", narration: "", completed: null };
+
+      throw new TypeError("terminated");
+    });
+
+    // when
+    const raised = await brainService.generateNativelyStream(createNativeAsk("go"), async () => {}).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    // then
+    expect(innermostMessageOf(raised)).toBe(
+      "the connection dropped partway through the answer. What arrived is above; ask again to finish it.",
+    );
+  });
+
   it("ShouldClimbDownBeforeStreamingWhenTheConversationWouldNotFitAsync", async () => {
     // given
     const { generatorBrokerV1Mock, loggingBrokerMock, brainService } = createNativeBrainServiceTests({
