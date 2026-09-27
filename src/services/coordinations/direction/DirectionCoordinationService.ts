@@ -152,6 +152,10 @@ export class DirectionCoordinationService {
     const claim = await this.perimeterOrchestrationService.claim(effect);
 
     if (claim.verdict === "Replay") {
+      // Counted on the run, which every protocol shares, so the loop can tell a run going in
+      // circles on the text protocol too (SPEC.md 4.10, v1.14).
+      AgentRun.current()?.recordReplay(effect.idempotencyKey);
+
       // Once is a replay, with a note saying so. From the third identical call on it is the note
       // alone: the bytes have been handed back twice, and a third copy costs the person context and
       // buys the model nothing it did not already have.
@@ -229,6 +233,8 @@ export class DirectionCoordinationService {
       arguments: effect.arguments,
       outcome: output,
       idempotencyKey: effect.idempotencyKey,
+      scope: effect.scope,
+      riskLevel: effect.riskLevel,
     });
 
     // 5. Record the outcome, before the loop advances.
@@ -324,16 +330,26 @@ export class DirectionCoordinationService {
   // the writes, which makes it a different act in the ledger: it runs, and a second identical
   // read after the same write replays as before. Acts that are not Safe keep their key exactly:
   // a transfer proposed twice is one transfer, whatever else happened in between.
+  //
+  // The writes are counted from what the run performed, because that is what every protocol has:
+  // the text protocol carries no exchanges, and a count read from them alone never saw a write
+  // there (SPEC.md 4.9, v1.14). The exchanges still count, for the conversation a run resumed
+  // with: a run picked up after a pause begins with nothing performed, and the writes before the
+  // pause are in the exchanges it was handed. Whichever saw more writes saw what happened.
   private afterWhatChangedIt(context: AgentContext, effect: AgentEffect): AgentEffect {
     if (effect.riskLevel !== "Safe" || effect.scope.length === 0) {
       return effect;
     }
 
-    const writes = context.toolExchanges.filter(
+    const performedWrites = AgentRun.current()?.writesTo(effect.scope) ?? 0;
+
+    const exchangedWrites = context.toolExchanges.filter(
       (exchange) =>
         this.riskLevelFor(exchange.toolName) !== "Safe" &&
         this.scopeFor(exchange.toolName, exchange.argumentsJson) === effect.scope,
     ).length;
+
+    const writes = Math.max(performedWrites, exchangedWrites);
 
     if (writes === 0) {
       return effect;

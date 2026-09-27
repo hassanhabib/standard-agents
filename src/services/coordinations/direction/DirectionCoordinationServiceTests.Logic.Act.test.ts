@@ -85,7 +85,16 @@ describe("DirectionCoordinationService act logic", () => {
     expect(perimeterOrchestrationServiceMock.claim).toHaveBeenCalledWith(expectedEffect);
     expect(executionOrchestrationServiceMock.run).toHaveBeenCalledWith(context.directionType, context.payload, undefined);
     expect(perimeterOrchestrationServiceMock.recordOutcome).toHaveBeenCalledWith(expectedEffect, output);
-    expect(performed).toEqual([{ toolName: context.directionType, arguments: context.payload, outcome: output, idempotencyKey: expectedEffect.idempotencyKey }]);
+    expect(performed).toEqual([
+      {
+        toolName: context.directionType,
+        arguments: context.payload,
+        outcome: output,
+        idempotencyKey: expectedEffect.idempotencyKey,
+        scope: expectedEffect.scope,
+        riskLevel: expectedEffect.riskLevel,
+      },
+    ]);
     expect(loggingBrokerMock.logPayload).toHaveBeenNthCalledWith(1, "Direction", `Tool '${context.directionType}' input`, context.payload, true);
     expect(loggingBrokerMock.logPayload).toHaveBeenNthCalledWith(2, "Direction", `Tool '${context.directionType}' output`, output, false);
     verifyNoOtherCalls(perimeterOrchestrationServiceMock, { authorize: 1, claim: 1, recordOutcome: 1 });
@@ -227,7 +236,7 @@ describe("DirectionCoordinationService act logic", () => {
     // the thing that was not working: it is the bytes it was looking at when it decided to ask
     // again, and every copy costs the person a turn's worth of context. The run itself goes on,
     // because whether a run that keeps asking should end is the loop's contract to decide, and the
-    // contract says the turn cap decides it.
+    // repetition bound decides it between turns.
     expect(actualContext.status).toBe("Working");
     expect(actualContext.result).toContain("third time");
     expect(actualContext.result).not.toContain(outcome);
@@ -285,6 +294,72 @@ describe("DirectionCoordinationService act logic", () => {
     expect(claimedWith.idempotencyKey).not.toBe(beforeTheWrite.idempotencyKey);
     expect(actualContext.result).toBe("the file after");
     verifyNoOtherCalls(executionOrchestrationServiceMock, { run: 1 });
+  });
+
+  it("ShouldReadAgainOnActWhenThisRunWroteToThePlaceSinceWithoutACallIdAsync", async () => {
+    // given
+    // The same read after the same write, on the text protocol: no call ids, so no exchanges, and
+    // the only record that the write happened is the run's own. Watched in both implementations:
+    // the count came from native exchanges, so a text-protocol run that edited a file and read it
+    // back was handed the file as it was before the edit (SPEC.md 4.9, v1.14).
+    const { perimeterOrchestrationServiceMock, executionOrchestrationServiceMock, directionCoordinationService } =
+      createDirectionCoordinationServiceTests({
+        toolRisk: new Map([
+          ["read_file", "Safe"],
+          ["write_file", "Irreversible"],
+        ]),
+        toolScope: new Map([
+          ["read_file", (input: string): string => input.split(" ")[0] ?? ""],
+          ["write_file", (input: string): string => input.split(" ")[0] ?? ""],
+        ]),
+      });
+
+    const writeContext = toolContext("write_file", "index.html version two");
+    const readContext = toolContext("read_file", "index.html");
+    perimeterOrchestrationServiceMock.authorize.mockResolvedValue(allow());
+    perimeterOrchestrationServiceMock.claim.mockResolvedValue(proceed());
+    perimeterOrchestrationServiceMock.recordOutcome.mockResolvedValue(undefined);
+    executionOrchestrationServiceMock.run.mockResolvedValueOnce("written").mockResolvedValueOnce("the file after");
+
+    // when
+    const [actualContext, runId] = await AgentRun.begin(null, undefined, async () => {
+      await directionCoordinationService.act(writeContext);
+      const acted = await directionCoordinationService.act(readContext);
+
+      return [acted, AgentRun.current()?.id ?? ""];
+    });
+
+    // then
+    // Counted from what the run performed, so it holds whichever protocol carried the calls.
+    const beforeTheWrite = createAgentEffect(runId, "read_file", "index.html", "Safe", false, null, "index.html");
+    const claimedWith = perimeterOrchestrationServiceMock.claim.mock.calls[1]?.[0] as AgentEffect;
+
+    expect(claimedWith.idempotencyKey).not.toBe(beforeTheWrite.idempotencyKey);
+    expect(actualContext.result).toBe("the file after");
+    verifyNoOtherCalls(executionOrchestrationServiceMock, { run: 2 });
+  });
+
+  it("ShouldCountTheReplaysOfTheLatestAskOnTheRunWithoutACallIdAsync", async () => {
+    // given
+    // The same ask twice more after it ran, on the text protocol: no call ids, so no exchange says
+    // "replayed", and a loop that counted only exchanges never saw a text-protocol run going in
+    // circles. Watched in both implementations. The run is what every protocol shares.
+    const { perimeterOrchestrationServiceMock, directionCoordinationService } = createDirectionCoordinationServiceTests();
+
+    const context = toolContext();
+    perimeterOrchestrationServiceMock.authorize.mockResolvedValue(allow());
+    perimeterOrchestrationServiceMock.claim.mockResolvedValue({ verdict: "Replay", outcome: createRandomString(), record: null });
+
+    // when
+    const actualReplays = await AgentRun.begin(null, undefined, async () => {
+      await directionCoordinationService.act(context);
+      await directionCoordinationService.act(context);
+
+      return AgentRun.current()?.replaysOfLatestAsk ?? 0;
+    });
+
+    // then
+    expect(actualReplays).toBe(2);
   });
 
   it("ShouldMarkAReplayedExchangeAsAReplayAsync", async () => {

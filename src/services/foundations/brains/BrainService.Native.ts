@@ -8,7 +8,7 @@ import {
 import type { ToolExchange } from "../../../models/orchestrations/agents/ToolExchange.js";
 import type { NativeAsk, NativeOptions } from "../../../models/foundations/brains/NativeAsk.js";
 
-// The conversation the native protocol sends, built from what the run knows (SPEC.md 17.1). The
+// The conversation the native protocol sends, built from what the run knows (SPEC.md 6.2). The
 // order is the wire contract's and is not the agent's to improvise: a provider reads a
 // conversation, and a conversation that does not alternate the way it expects is a conversation
 // it answers badly.
@@ -113,7 +113,7 @@ function observationsNoExchangeAccountsFor(ask: NativeAsk): readonly string[] {
   return ask.observations.filter((observation) => !accountedFor.has(observation));
 }
 
-// The rungs of the degradation ladder, in order (SPEC.md 10.3). Each gives up something the one
+// The rungs of the degradation ladder, in order (SPEC.md 6.2). Each gives up something the one
 // before it kept: first the old results, then the old turns. Nothing gives up the current prompt.
 export function ladderRungs(ask: NativeAsk, options: NativeOptions): ReadonlyArray<{ ask: NativeAsk; elisionWindow: number; gaveUp: string }> {
   const halved = Math.floor(options.maxHistoryTurns / 2);

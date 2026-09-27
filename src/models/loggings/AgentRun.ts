@@ -24,6 +24,8 @@ export class AgentRun {
   private readonly verdicts = new Map<string, string>();
   private readonly grants = new Set<string>();
   private readonly performed: PerformedEffect[] = [];
+  private readonly replays = new Map<string, number>();
+  private latestAskReplays = 0;
   private sequence = 0;
   private processIndex = 0;
 
@@ -85,6 +87,35 @@ export class AgentRun {
 
   public recordPerformed(effect: PerformedEffect): void {
     this.performed.push(effect);
+
+    // An act that ran is not a repeat, whatever came before it.
+    this.latestAskReplays = 0;
+  }
+
+  // How many times the ledger has answered the most recent ask that reached it, or zero when that
+  // ask was performed. What a repetition bound reads between turns (SPEC.md 4.10, v1.14).
+  public get replaysOfLatestAsk(): number {
+    return this.latestAskReplays;
+  }
+
+  // Records that the run-once ledger answered this act again, and says how many times it has now
+  // done so in this run (SPEC.md 4.9, v1.14). Kept by the act's key, so a look after a write,
+  // which carries a different key, starts its own count, and it holds on every protocol.
+  public recordReplay(idempotencyKey: string): number {
+    const replayed = (this.replays.get(idempotencyKey) ?? 0) + 1;
+    this.replays.set(idempotencyKey, replayed);
+    this.latestAskReplays = replayed;
+
+    return replayed;
+  }
+
+  // How many acts this run has performed on a scope that were not Safe: what a look at that scope
+  // would see has changed that many times since the run began (SPEC.md 4.9, v1.14). Counted from
+  // what the run performed, so it holds on every protocol, not only the one that carries exchanges.
+  public writesTo(scope: string): number {
+    return this.performed.filter(
+      (performed) => performed.riskLevel !== undefined && performed.riskLevel !== "Safe" && performed.scope === scope,
+    ).length;
   }
 
   // The next record number for this run, monotonic from zero, and the process number within

@@ -3,7 +3,7 @@ import type { ToolDefinition } from "../../brokers/generators/v1/ToolDefinition.
 import type { AgentTurn } from "../../brokers/sessions/AgentTurn.js";
 import type { ToolExchange } from "../../orchestrations/agents/ToolExchange.js";
 
-// What one native turn is asked with (SPEC.md 6.2, 17.1). The V0 brain is handed a system prompt
+// What one native turn is asked with (SPEC.md 6.2). The V0 brain is handed a system prompt
 // and a user prompt already written out; the V1 brain is handed the pieces, because the
 // conversation it must build is structured and the structure is what the provider reads.
 export interface NativeAsk {
@@ -37,7 +37,7 @@ export function createNativeAsk(prompt: string, overrides: Partial<NativeAsk> = 
 }
 
 // What the deployment established about the window the conversation must fit through, and how
-// much of an old call's result is worth carrying (SPEC.md 10.3).
+// much of an old call's result is worth carrying (SPEC.md 6.2).
 export interface NativeOptions {
   // How many of the most recent calls keep their result. Older calls keep what they were and lose
   // what they returned, because a result already reasoned over is worth less than the room it

@@ -58,4 +58,20 @@ describe("AgentRun remember logic", () => {
     expect(run.nextProcessIndex()).toBe(0);
   });
 
+  it("ShouldForgetTheReplaysOfTheLatestAskOnceAnActIsPerformed", () => {
+    // given
+    // An act that ran is not a repeat, whatever came before it. Kept, the count of an older ask's
+    // replays would stop a run for going in circles on the turn after it did something real.
+    const run = AgentRun.detached();
+    const idempotencyKey = randomUUID();
+    const performed = { toolName: randomUUID(), arguments: randomUUID(), outcome: randomUUID(), idempotencyKey: randomUUID() };
+
+    // when
+    run.recordReplay(idempotencyKey);
+    run.recordReplay(idempotencyKey);
+    run.recordPerformed(performed);
+
+    // then
+    expect(run.replaysOfLatestAsk).toBe(0);
+  });
 });

@@ -7,14 +7,16 @@
 // a service, so the whole tree under test is the real library; and the agent is observed through
 // its real seams, the outcome and the tools' own records, never off to the side.
 //
-// Sprint 1 wires the Core fields. A vector carrying a setup or expectation field this runner does
-// not yet honor fails as unsupported, so a profile is never claimed on a vector half-run.
+// Sprint 1 wired the Core fields; SPEC v1.14 added what a tool declares about itself, the
+// repetition bound, and how a run ended. A vector carrying a setup or expectation field this
+// runner does not yet honor fails as unsupported, so a profile is never claimed on a vector
+// half-run.
 
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { StandardAgent, type AgentOutcome, type GeneratorBroker, type Tool } from "@hassanhabib/standard-agents";
+import { StandardAgent, type AgentOutcome, type GeneratorBroker, type RiskLevel, type Tool } from "@hassanhabib/standard-agents";
 
 interface Vector {
   readonly name: string;
@@ -26,6 +28,14 @@ interface Vector {
   readonly expect: Readonly<Record<string, unknown>>;
   readonly maxTurns?: number;
   readonly toolDescriptions?: Readonly<Record<string, string>>;
+  readonly toolRisk?: Readonly<Record<string, RiskLevel>>;
+  readonly toolScopeFirstWord?: readonly string[];
+  readonly identicalCallLimit?: number;
+  readonly request?: Readonly<Record<string, unknown>>;
+}
+
+interface ScriptedGenerator extends GeneratorBroker {
+  readonly inputs: string[];
 }
 
 interface Profile {
@@ -54,9 +64,22 @@ const SUPPORTED_SETUP_FIELDS: ReadonlySet<string> = new Set([
   "expect",
   "maxTurns",
   "toolDescriptions",
+  "toolRisk",
+  "toolScopeFirstWord",
+  "identicalCallLimit",
+  "request",
 ]);
 
-const SUPPORTED_EXPECTATIONS: ReadonlySet<string> = new Set(["result", "resultContains", "toolInput", "toolRunCount", "toolNeverRan"]);
+const SUPPORTED_EXPECTATIONS: ReadonlySet<string> = new Set([
+  "result",
+  "resultContains",
+  "toolInput",
+  "toolRunCount",
+  "toolNeverRan",
+  "status",
+  "failureCode",
+  "brainSees",
+]);
 
 const referenceRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "reference", "conformance");
 
@@ -73,13 +96,17 @@ async function readJsonFiles<T>(folder: string): Promise<Array<T & { file: strin
 }
 
 // The scripted Brain (CONFORMANCE.md, runner contract 1): the replies in order, repeating the
-// last when exhausted, so a single non-terminal reply exercises the turn cap.
-function createScriptedGenerator(replies: readonly string[]): GeneratorBroker {
+// last when exhausted, so a single non-terminal reply exercises the turn cap. What it was handed
+// is kept, so what reached the Brain is observed at the Brain rather than inferred.
+function createScriptedGenerator(replies: readonly string[]): ScriptedGenerator {
+  const inputs: string[] = [];
   let index = 0;
 
   return {
     honorsRequest: true,
-    generate: async () => {
+    inputs,
+    generate: async (systemPrompt: string, userPrompt: string) => {
+      inputs.push(`${systemPrompt}\n${userPrompt}`);
       const reply = replies[Math.min(index, replies.length - 1)] ?? "";
       index += 1;
 
@@ -89,14 +116,20 @@ function createScriptedGenerator(replies: readonly string[]): GeneratorBroker {
 }
 
 // Stub internal tools (runner contract 2): each returns its fixed output and records what it was
-// called with. A description is the advertisement opt-in, given only when the vector says so.
-function createStubTool(name: string, output: string, description: string): StubTool {
+// called with. A description is the advertisement opt-in, given only when the vector says so. A
+// tool declares its own risk, and names what it touches as the first word of its input when the
+// vector says so, which is what makes a look after a write observable (SPEC.md 4.9).
+function createStubTool(name: string, output: string, vector: Vector): StubTool {
   const inputs: string[] = [];
+  const risk = vector.toolRisk?.[name];
+  const scopeIsFirstWord = vector.toolScopeFirstWord?.includes(name) === true;
 
   return {
     name,
-    description,
+    description: vector.toolDescriptions?.[name] ?? "",
     inputs,
+    ...(risk === undefined ? {} : { risk }),
+    ...(scopeIsFirstWord ? { scopeOf: (input: string): string => input.split(" ")[0] ?? "" } : {}),
     execute: async (input: string) => {
       inputs.push(input);
 
@@ -105,17 +138,32 @@ function createStubTool(name: string, output: string, description: string): Stub
   };
 }
 
+// A request with nothing in it only says "read the outcome", which is the one door this runner
+// drives. A request that carries inference options is not honored yet, so it is unsupported.
 function unsupportedFields(vector: Vector): string[] {
   const setup = Object.keys(vector).filter((key) => !SUPPORTED_SETUP_FIELDS.has(key));
   const expectations = Object.keys(vector.expect).filter((key) => !SUPPORTED_EXPECTATIONS.has(key));
+  const request = vector.request === undefined ? [] : Object.keys(vector.request).map((key) => `request.${key}`);
 
-  return [...setup, ...expectations.map((key) => `expect.${key}`)];
+  return [...setup, ...request, ...expectations.map((key) => `expect.${key}`)];
 }
 
-function assertExpectations(vector: Vector, outcome: AgentOutcome, tools: readonly StubTool[]): string[] {
+function assertExpectations(vector: Vector, outcome: AgentOutcome, tools: readonly StubTool[], brainInputs: readonly string[]): string[] {
   const failures: string[] = [];
   const expected = vector.expect;
   const toolByName = new Map(tools.map((tool) => [tool.name, tool]));
+
+  if (typeof expected["status"] === "string" && outcome.status !== expected["status"]) {
+    failures.push(`status: expected ${expected["status"]}, got ${outcome.status}`);
+  }
+
+  if (typeof expected["failureCode"] === "string" && outcome.failure?.code !== expected["failureCode"]) {
+    failures.push(`failureCode: expected ${expected["failureCode"]}, got ${outcome.failure?.code ?? "none"}`);
+  }
+
+  if (typeof expected["brainSees"] === "string" && !brainInputs.some((input) => input.includes(String(expected["brainSees"])))) {
+    failures.push(`brainSees: the Brain was never shown ${JSON.stringify(expected["brainSees"])}`);
+  }
 
   if (typeof expected["result"] === "string" && outcome.result !== expected["result"]) {
     failures.push(`result: expected ${JSON.stringify(expected["result"])}, got ${JSON.stringify(outcome.result)}`);
@@ -171,15 +219,14 @@ async function runVector(vector: Vector): Promise<VectorResult> {
     return { vector, passed: false, detail: `unsupported field(s) in this runner: ${unsupported.join(", ")}` };
   }
 
-  const tools = Object.entries(vector.tools).map(([name, output]) =>
-    createStubTool(name, output, vector.toolDescriptions?.[name] ?? ""),
-  );
+  const tools = Object.entries(vector.tools).map(([name, output]) => createStubTool(name, output, vector));
+  const generator = createScriptedGenerator(vector.generatorReplies);
 
   // Runner contract 3: Skill returns any text; Memory, Knowledge and the remote servers stay not
   // configured; the Gate allows and the Judge scores 1 because nothing configured them; the log
   // is silent. Nothing below the client is replaced.
   const agent = new StandardAgent()
-    .useGenerator(createScriptedGenerator(vector.generatorReplies))
+    .useGenerator(generator)
     .onSkills(async () => [{ name: "test-agent", description: "", content: "You are a test agent." }])
     .tools(tools);
 
@@ -187,9 +234,13 @@ async function runVector(vector: Vector): Promise<VectorResult> {
     agent.maxTurns(vector.maxTurns);
   }
 
+  if (vector.identicalCallLimit !== undefined) {
+    agent.identicalCallLimit(vector.identicalCallLimit);
+  }
+
   try {
     const outcome = await agent.runAsync(vector.prompt);
-    const failures = assertExpectations(vector, outcome, tools);
+    const failures = assertExpectations(vector, outcome, tools, generator.inputs);
 
     return failures.length === 0
       ? { vector, passed: true, detail: `${outcome.status}: ${firstLine(outcome.result)}` }
