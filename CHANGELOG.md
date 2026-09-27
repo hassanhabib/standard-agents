@@ -4,6 +4,28 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.14.0]
+
+Tracks SPEC v1.15, section 4.14.1, as `Standard.Agents` 4.0.0.0 does.
+
+### Added
+
+- **A run says what it has spent, after every model call.** The loop always counted a run's tokens,
+  reported or estimated, because the budget cannot bound what it does not count, and it kept the
+  count to itself: somebody watching a run could read a clock and nothing else. The event stream
+  now carries a `Usage` event after every call the loop makes for the Brain. Its new `usage` field
+  is the run's total so far as an `AgentUsage`, estimated when any call in it was; its `content` is
+  that total as a number. It is the count the budget reads, a draft sent back for revision counts,
+  and it is never part of the answer. Both `runStream` and `runWithEvents` carry it.
+- **The conformance runner drives the streamed door.** A vector marked `streamed` runs through
+  `runStream`, and `usageEvents` and `usageEstimated` read the Usage events off the stream. Vector
+  83 passes, and fails against a build that reports each call's own figure instead of the total.
+
+### Upgrading
+
+A consumer that switches on an event's `type` sees a sixth kind. One that treats any kind it does
+not know as answer text would print the count into the answer; handle `Usage` or ignore it.
+
 ## [0.13.2]
 
 ### Fixed
