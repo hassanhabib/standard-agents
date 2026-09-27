@@ -11,6 +11,7 @@ import { FailedBrainServiceException } from "../../../models/foundations/brains/
 import { InvalidBrainException } from "../../../models/foundations/brains/exceptions/InvalidBrainException.js";
 import { NotFoundBrainException } from "../../../models/foundations/brains/exceptions/NotFoundBrainException.js";
 import { RefusedBrainException } from "../../../models/foundations/brains/exceptions/RefusedBrainException.js";
+import { RejectedBrainException } from "../../../models/foundations/brains/exceptions/RejectedBrainException.js";
 import { UnavailableBrainException } from "../../../models/foundations/brains/exceptions/UnavailableBrainException.js";
 import { UnreachableBrainException } from "../../../models/foundations/brains/exceptions/UnreachableBrainException.js";
 
@@ -120,8 +121,16 @@ export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
         );
       }
 
+      // Every other status is the service turning this request down for a reason of its own, and
+      // the reason it gave, when it gave one in words, is the part worth reading.
       if (error instanceof HttpResponseException) {
-        throw await createAndLogDependencyException(loggingBroker, error);
+        throw await createAndLogDependencyException(
+          loggingBroker,
+          new RejectedBrainException(
+            `the model service refused the request (${String(error.status)})${becauseOf(error.body)}`,
+            error,
+          ),
+        );
       }
 
       const failedBrainServiceException = new FailedBrainServiceException(
@@ -147,6 +156,37 @@ function howLongToWait(retryAfter: string | null): string {
 
   return `Try again in ${String(seconds)} ${seconds === 1 ? "second" : "seconds"}.`;
 }
+
+// The service's own reason, as the end of a sentence: ": <reason>." when the body carries one in
+// words, "." when it does not. The OpenAI shape puts it at error.message; some services send a bare
+// message, and some a line of plain text. A page of HTML from a proxy is not a reason, and neither
+// is a paragraph, so both are left out rather than pasted into what somebody reads.
+function becauseOf(body: string): string {
+  const reason = reasonIn(body).trim();
+
+  if (reason.length === 0 || reason.length > MOST_A_REASON_RUNS || reason.startsWith("<")) {
+    return ".";
+  }
+
+  return /[.!?]$/.test(reason) ? `: ${reason}` : `: ${reason}.`;
+}
+
+function reasonIn(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: unknown } | unknown; message?: unknown };
+    const nested = typeof parsed.error === "object" && parsed.error !== null ? (parsed.error as { message?: unknown }).message : parsed.error;
+
+    if (typeof nested === "string") {
+      return nested;
+    }
+
+    return typeof parsed.message === "string" ? parsed.message : "";
+  } catch {
+    return body;
+  }
+}
+
+const MOST_A_REASON_RUNS = 200;
 
 async function createAndLogValidationException(
   loggingBroker: LoggingBroker,
