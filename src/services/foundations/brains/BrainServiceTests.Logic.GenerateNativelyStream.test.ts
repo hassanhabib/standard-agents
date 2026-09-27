@@ -38,6 +38,31 @@ describe("BrainService native streaming", () => {
     ]);
   });
 
+  it("ShouldNotVoiceAPieceWithNothingInItAsync", async () => {
+    // given
+    // A stream says it has started before it has anything to say: the broker hands up an empty
+    // piece the moment the service answers, so the first-piece clock can stop. It is a signal for
+    // the clock, not a word, and whoever is listening should not be handed silence as speech.
+    const { generatorBrokerV1Mock, brainService } = createNativeBrainServiceTests();
+    const completed = createGenerationResult({ content: "hello" });
+
+    generatorBrokerV1Mock.generateStream.mockImplementation(async function* () {
+      yield { content: "", narration: "", completed: null };
+      yield { content: "hello", narration: "", completed: null };
+      yield { content: "", narration: "", completed };
+    });
+
+    const voiced: Array<{ content: string; narration: string }> = [];
+
+    // when
+    await brainService.generateNativelyStream(createNativeAsk("go"), async (delta) => {
+      voiced.push({ content: delta.content, narration: delta.narration });
+    });
+
+    // then
+    expect(voiced).toEqual([{ content: "hello", narration: "" }]);
+  });
+
   it("ShouldSayItIsWaitingOnABusyServiceBeforeAskingOnceMoreAsync", async () => {
     // given
     // A wait nobody is told about is a window that has stopped for no reason. The service said it
