@@ -46,8 +46,10 @@ describe("HttpGeneratorBrokerV1 generateStream logic", () => {
     expect(requests[0]?.headers["accept"]).toBe("text/event-stream");
     expect(requests[0]?.body["stream"]).toBe(true);
 
-    expect(deltas.map((delta) => delta.narration)).toEqual(["Reading the entry point.", "", "", ""]);
-    expect(deltas.map((delta) => delta.content)).toEqual(["", "two", " packages", ""]);
+    // What was said, in order, rather than every piece: a stream may say it has begun with an empty
+    // piece before it says anything.
+    expect(deltas.map((delta) => delta.narration).filter((said) => said.length > 0)).toEqual(["Reading the entry point."]);
+    expect(deltas.map((delta) => delta.content).filter((said) => said.length > 0)).toEqual(["two", " packages"]);
     expect(deltas.at(-1)?.completed?.content).toBe("two packages");
     expect(deltas.at(-1)?.completed?.headers["x-example-decider"]).toBe("peer-7");
   });

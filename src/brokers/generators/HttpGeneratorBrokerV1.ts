@@ -89,6 +89,11 @@ export class HttpGeneratorBrokerV1 implements GeneratorBrokerV1 {
       throw new HttpResponseException(response.status, await response.text(), response.headers.get("retry-after"));
     }
 
+    // The service has answered: an empty piece says so before there is anything to say. A turn can
+    // spend a long time in frames with no words in them, a tool call's arguments or a model's own
+    // reasoning, and whoever is timing the wait for an answer is owed the moment it began.
+    yield { content: "", narration: "", completed: null };
+
     const state = createStreamState();
 
     for await (const payload of readFrames(decoded(response))) {
