@@ -6,7 +6,7 @@ import type { AgentContext } from "../../../../models/orchestrations/agents/Agen
 import type { BrainService } from "../../../foundations/brains/BrainService.js";
 import type { UsageService } from "../../../foundations/usages/UsageService.js";
 import { createTryCatch, type TryCatch } from "./InferenceOrchestrationService.Exceptions.js";
-import { buildAsk, droppedCallIds, interpretNatively } from "./InferenceOrchestrationService.Native.js";
+import { buildAsk, droppedCallIds, interpretNatively, whatCameBack, whatWasSent } from "./InferenceOrchestrationService.Native.js";
 import { buildUserMessage, interpret } from "./InferenceOrchestrationService.Protocol.js";
 
 // The model call, and how its answer is read (SPEC.md 6). One foundation, but a region rather
@@ -60,8 +60,9 @@ export class InferenceOrchestrationService {
         return decided;
       }
 
-      const generation = await this.brainService.generateNativelyStream(buildAsk(context, this.toolDefinitions), voice, stopOf());
-      const decided = interpretNatively(context, generation);
+      const ask = buildAsk(context, this.toolDefinitions);
+      const generation = await this.brainService.generateNativelyStream(ask, voice, stopOf());
+      const decided = await this.measured(interpretNatively(context, generation), whatWasSent(ask), whatCameBack(generation));
       await this.warnAboutDroppedCalls(generation.toolCalls.length, droppedCallIds(generation));
       await this.narrateDecided(decided, generation.content);
 
@@ -70,8 +71,12 @@ export class InferenceOrchestrationService {
   }
 
   private async decideNatively(context: AgentContext): Promise<AgentContext> {
-    const generation = await this.brainService.generateNatively(buildAsk(context, this.toolDefinitions), stopOf());
-    const decided = interpretNatively(context, generation);
+    const ask = buildAsk(context, this.toolDefinitions);
+    const generation = await this.brainService.generateNatively(ask, stopOf());
+
+    // Counted when the provider said nothing, as the text protocol has always been. The global
+    // network answers a streamed turn with no usage frame, and every native call was taken as free.
+    const decided = await this.measured(interpretNatively(context, generation), whatWasSent(ask), whatCameBack(generation));
     await this.warnAboutDroppedCalls(generation.toolCalls.length, droppedCallIds(generation));
     await this.narrateDecided(decided, generation.content);
 
