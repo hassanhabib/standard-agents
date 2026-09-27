@@ -4,6 +4,18 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.13.1]
+
+### Fixed
+
+- **The thirty-second wait ends when the service answers, not at its first word.** A turn can spend
+  a long time in frames with no words in them: a tool call's arguments, a model's reasoning, or a
+  Host on somebody's own hardware reading a long prompt. None of those frames was handed up, so the
+  first-piece clock ran out on a Host that had answered in two seconds and was plainly working.
+  Watched on a Host on the local network: "did not start answering within 30 seconds" on every
+  coding turn. The stream now hands up an empty piece the moment the service answers; the clock
+  stops on it, and it is not voiced.
+
 ## [0.13.0]
 
 ### When the model service fails
