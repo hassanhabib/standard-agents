@@ -4,6 +4,29 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.12.0]
+
+### The loop, on every protocol
+
+- **A look after a write sees the write on the text protocol too.** The writes a look is keyed
+  against were counted from native exchanges, and the text protocol keeps none, so a run on the text
+  protocol that edited a file and read it back was handed the file as it was before the edit. The
+  run now counts what it performed (`AgentRun.writesTo`), and `PerformedEffect` carries the scope
+  and risk of each act. The exchanges still count for a run resumed with a conversation, and
+  whichever saw more writes decides.
+- **A text-protocol run going in circles stops.** The repetition bound read only the exchanges'
+  `replayed` flag, so on the text protocol it never fired and the turn cap ended the run as if it
+  had merely run long. The run now counts the ledger's answers to its latest ask
+  (`AgentRun.recordReplay`, `AgentRun.replaysOfLatestAsk`), and an act that ran resets the count.
+
+### Conformance
+
+- The reference is pinned at The Standard Agent v3.0.0 (SPEC v1.14). The runner honors
+  `toolRisk`, `toolScopeFirstWord`, `identicalCallLimit`, an empty `request`, and the expectations
+  `status`, `failureCode` and `brainSees`. Vectors 80, 81 and 82 pass; 80 and 82 fail against
+  0.11.0.
+- Citations of SPEC sections that do not exist (10.3, 17.1) now name §6.2.
+
 ## [0.11.0]
 
 ### The native conversation
