@@ -23,6 +23,7 @@ interface JsonRpcAnswer {
 
 const LATEST_PROTOCOL_VERSION = "2025-06-18";
 const OPEN_OBJECT_SCHEMA = "{}";
+const FRAME_BOUNDARY = "\n\n";
 
 export class HttpMcpBroker implements McpBroker {
   private readonly url: string;
@@ -87,13 +88,13 @@ export class HttpMcpBroker implements McpBroker {
       ...(params === undefined ? {} : { params }),
     });
 
-    const body = await response.text();
-
     if (!response.ok) {
-      throw new HttpResponseException(response.status, body, response.headers.get("retry-after"));
+      throw new HttpResponseException(response.status, await response.text(), response.headers.get("retry-after"));
     }
 
-    const answer = JSON.parse(body) as JsonRpcAnswer;
+    const answer = isEventStream(response)
+      ? await readAnswerFromEventStream(response)
+      : (JSON.parse(await response.text()) as JsonRpcAnswer);
 
     if (answer.error !== undefined) {
       throw new Error(answer.error.message ?? "The MCP server answered with an error.");
@@ -121,4 +122,67 @@ export class HttpMcpBroker implements McpBroker {
       Accept: "application/json, text/event-stream",
     };
   }
+}
+
+function isEventStream(response: Response): boolean {
+  return (response.headers.get("content-type") ?? "").startsWith("text/event-stream");
+}
+
+// The answer out of an event stream: frames separated by a blank line, a frame's data lines
+// joined, and anything that is not the answer (a notification, a progress report, a comment)
+// passed over. Read as it arrives and abandoned once answered, because a server may hold the
+// stream open after it has said what this request was waiting for.
+async function readAnswerFromEventStream(response: Response): Promise<JsonRpcAnswer> {
+  const reader = response.body?.getReader();
+
+  if (reader === undefined) {
+    throw new Error("The MCP server answered with an empty event stream.");
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      buffer += done ? FRAME_BOUNDARY : decoder.decode(value, { stream: true });
+      buffer = buffer.replaceAll("\r\n", "\n");
+
+      let boundary = buffer.indexOf(FRAME_BOUNDARY);
+
+      while (boundary >= 0) {
+        const answer = readAnswer(buffer.slice(0, boundary));
+        buffer = buffer.slice(boundary + FRAME_BOUNDARY.length);
+
+        if (answer !== null) {
+          return answer;
+        }
+
+        boundary = buffer.indexOf(FRAME_BOUNDARY);
+      }
+
+      if (done) {
+        throw new Error("The MCP server closed its event stream without an answer.");
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+}
+
+function readAnswer(frame: string): JsonRpcAnswer | null {
+  const data = frame
+    .split("\n")
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice("data:".length).trimStart())
+    .join("\n");
+
+  if (data.length === 0) {
+    return null;
+  }
+
+  const message = JSON.parse(data) as JsonRpcAnswer & { readonly method?: string };
+  const isAnswer = message.method === undefined && (message.result !== undefined || message.error !== undefined);
+
+  return isAnswer ? message : null;
 }
