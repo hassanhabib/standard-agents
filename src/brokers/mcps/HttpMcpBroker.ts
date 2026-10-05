@@ -31,6 +31,8 @@ export class HttpMcpBroker implements McpBroker {
   private readonly fetchResource: typeof fetch;
   private requestId = 0;
   private initialization: Promise<void> | null = null;
+  private sessionId: string | null = null;
+  private protocolVersion: string | null = null;
 
   public constructor(
     endpointUrl: string,
@@ -69,38 +71,56 @@ export class HttpMcpBroker implements McpBroker {
   }
 
   private async initialize(): Promise<void> {
-    await this.request("initialize", {
+    this.sessionId = null;
+    this.protocolVersion = null;
+
+    const response = await this.post(this.message("initialize", {
       protocolVersion: LATEST_PROTOCOL_VERSION,
       capabilities: {},
       clientInfo: { name: "standard-agents", version: STANDARD_AGENTS_VERSION },
-    });
+    }));
+
+    const result = await readResult(response);
+    this.sessionId = response.headers.get("mcp-session-id");
+    this.protocolVersion = typeof result["protocolVersion"] === "string" ? result["protocolVersion"] : null;
 
     await this.notify("notifications/initialized");
   }
 
+  // A session the server has ended answers 404 (the protocol's word for it): a new one is opened,
+  // once, by whichever request found it gone, and the request is sent again on it.
   private async request(method: string, params: Record<string, unknown> | undefined): Promise<Record<string, unknown>> {
+    const message = this.message(method, params);
+    const sentSessionId = this.sessionId;
+    const response = await this.post(message);
+
+    if (response.status === 404 && sentSessionId !== null) {
+      await response.text();
+      await this.renewSession(sentSessionId);
+
+      return await readResult(await this.post(message));
+    }
+
+    return await readResult(response);
+  }
+
+  private async renewSession(expiredSessionId: string): Promise<void> {
+    if (this.sessionId === expiredSessionId) {
+      this.initialization = null;
+    }
+
+    await this.ensureInitialized();
+  }
+
+  private message(method: string, params: Record<string, unknown> | undefined): Record<string, unknown> {
     this.requestId += 1;
 
-    const response = await this.post({
+    return {
       jsonrpc: "2.0",
       id: this.requestId,
       method,
       ...(params === undefined ? {} : { params }),
-    });
-
-    if (!response.ok) {
-      throw new HttpResponseException(response.status, await response.text(), response.headers.get("retry-after"));
-    }
-
-    const answer = isEventStream(response)
-      ? await readAnswerFromEventStream(response)
-      : (JSON.parse(await response.text()) as JsonRpcAnswer);
-
-    if (answer.error !== undefined) {
-      throw new Error(answer.error.message ?? "The MCP server answered with an error.");
-    }
-
-    return answer.result ?? {};
+    };
   }
 
   private async notify(method: string): Promise<void> {
@@ -120,8 +140,26 @@ export class HttpMcpBroker implements McpBroker {
     return {
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
+      ...(this.sessionId === null ? {} : { "Mcp-Session-Id": this.sessionId }),
+      ...(this.protocolVersion === null ? {} : { "MCP-Protocol-Version": this.protocolVersion }),
     };
   }
+}
+
+async function readResult(response: Response): Promise<Record<string, unknown>> {
+  if (!response.ok) {
+    throw new HttpResponseException(response.status, await response.text(), response.headers.get("retry-after"));
+  }
+
+  const answer = isEventStream(response)
+    ? await readAnswerFromEventStream(response)
+    : (JSON.parse(await response.text()) as JsonRpcAnswer);
+
+  if (answer.error !== undefined) {
+    throw new Error(answer.error.message ?? "The MCP server answered with an error.");
+  }
+
+  return answer.result ?? {};
 }
 
 function isEventStream(response: Response): boolean {
