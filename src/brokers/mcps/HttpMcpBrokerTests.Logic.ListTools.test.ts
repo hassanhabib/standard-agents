@@ -4,6 +4,7 @@ import {
   acceptedReply,
   createHttpMcpBrokerTests,
   ENDPOINT_URL,
+  errorReply,
   eventStreamReply,
   INITIALIZE_RESULT,
   jsonReply,
@@ -76,5 +77,44 @@ describe("HttpMcpBroker list tools logic", () => {
 
     // then
     expect(actualTools.map((tool) => tool.name)).toEqual(["find_student"]);
+  });
+
+  it("ShouldCarryOnWithoutASessionWhenTheServerHasNoInitializeAsync", async () => {
+    // given — a server older than the lifecycle: it knows its tools, not initialize
+    const { requests, mcpBroker } = createHttpMcpBrokerTests((request) =>
+      methodOf(request) === "initialize" ? errorReply(-32601, "Method not found") : jsonReply({ tools: [{ name: "lookup" }] }),
+    );
+
+    // when
+    const actualTools = await mcpBroker.listTools();
+
+    // then — its tools still reach the agent, and nothing announces a session that never opened
+    expect(actualTools.map((tool) => tool.name)).toEqual(["lookup"]);
+    expect(requests.map(methodOf)).not.toContain("notifications/initialized");
+  });
+
+  it("ShouldFollowTheCursorUntilTheCatalogEndsAsync", async () => {
+    // given — a server that pages its catalog, as servers with many tools do
+    const { requests, mcpBroker } = createHttpMcpBrokerTests((request) => {
+      const cursor = (request.body["params"] as { cursor?: string } | undefined)?.cursor;
+
+      switch (methodOf(request)) {
+        case "initialize":
+          return jsonReply(INITIALIZE_RESULT);
+        case "tools/list":
+          return cursor === undefined
+            ? jsonReply({ tools: [{ name: "first" }], nextCursor: "page-2" })
+            : jsonReply({ tools: [{ name: "second" }] });
+        default:
+          return acceptedReply();
+      }
+    });
+
+    // when
+    const actualTools = await mcpBroker.listTools();
+
+    // then — every page reaches the agent, in order, and the walk stops where the server says
+    expect(actualTools.map((tool) => tool.name)).toEqual(["first", "second"]);
+    expect(requests.filter((request) => methodOf(request) === "tools/list")).toHaveLength(2);
   });
 });
