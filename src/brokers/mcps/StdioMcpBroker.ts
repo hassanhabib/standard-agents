@@ -26,6 +26,7 @@ type JsonObject = Record<string, unknown>;
 
 const LATEST_PROTOCOL_VERSION = "2025-06-18";
 const OPEN_OBJECT_SCHEMA = "{}";
+const METHOD_NOT_FOUND = -32601;
 
 // The server's output as a queue of lines. A reader waits for the next line; a line nobody is
 // waiting for waits for its reader. Nothing is lost between reads, which is what lets a reader
@@ -88,8 +89,14 @@ export class StdioMcpBroker implements McpBroker {
     this.server = server;
   }
 
-  public async call(_name: string, _argumentsJson: string, _signal?: AbortSignal): Promise<string> {
-    throw new Error("not implemented");
+  // As over HTTP: the arguments travel as the object the model wrote, and nothing the tool
+  // returns is dropped.
+  public async call(name: string, argumentsJson: string, _signal?: AbortSignal): Promise<string> {
+    const result = await this.request("tools/call", { name, arguments: JSON.parse(argumentsJson) as unknown });
+    const content = (result["content"] ?? []) as readonly JsonObject[];
+    const text = content.map((block) => textOf(block)).join("");
+
+    return text.length === 0 && result["structuredContent"] !== undefined ? JSON.stringify(result["structuredContent"]) : text;
   }
 
   // The whole catalog, page by page, as the HTTP broker reads it.
@@ -116,6 +123,11 @@ export class StdioMcpBroker implements McpBroker {
   private async request(method: string, params: JsonObject | undefined): Promise<JsonObject> {
     const connection = await this.connect();
     const answer = await this.exchange(connection, method, params);
+    const error = answer["error"] as { message?: string } | undefined;
+
+    if (error !== undefined) {
+      throw new Error(error.message ?? "The MCP server answered with an error.");
+    }
 
     return (answer["result"] ?? {}) as JsonObject;
   }
@@ -153,9 +165,13 @@ export class StdioMcpBroker implements McpBroker {
         throw new Error("The MCP server ended its output before answering.");
       }
 
-      const message = JSON.parse(line) as JsonObject;
+      // A line that is not a message (a server logging to the wrong stream), a notification, and
+      // the server's own requests are not this request's answer, even when an id collides.
+      const message = toMessage(line);
 
-      if (message["id"] === id) {
+      if (message !== null && message["method"] !== undefined) {
+        answerServer(connection, message);
+      } else if (message !== null && message["id"] === id) {
         return message;
       }
     }
@@ -164,4 +180,43 @@ export class StdioMcpBroker implements McpBroker {
 
 function write(connection: Connection, message: JsonObject): void {
   connection.input.write(`${JSON.stringify(message)}\n`);
+}
+
+function toMessage(line: string): JsonObject | null {
+  try {
+    const message = JSON.parse(line) as unknown;
+
+    return typeof message === "object" && message !== null && !Array.isArray(message) ? (message as JsonObject) : null;
+  } catch {
+    return null;
+  }
+}
+
+// The server's own requests are answered so it is never left waiting: a liveness ping with an
+// empty result, anything else as a method this client does not offer. A notification needs none.
+function answerServer(connection: Connection, serverMessage: JsonObject): void {
+  if (serverMessage["id"] === undefined) {
+    return;
+  }
+
+  const answer = serverMessage["method"] === "ping"
+    ? { jsonrpc: "2.0", id: serverMessage["id"], result: {} }
+    : { jsonrpc: "2.0", id: serverMessage["id"], error: { code: METHOD_NOT_FOUND, message: "The client does not offer this method." } };
+
+  write(connection, answer);
+}
+
+function textOf(block: JsonObject): string {
+  const resource = block["resource"] as JsonObject | undefined;
+
+  switch (block["type"]) {
+    case "text":
+      return typeof block["text"] === "string" ? block["text"] : "";
+    case "resource":
+      return typeof resource?.["text"] === "string" ? resource["text"] : `[resource ${String(resource?.["uri"])}]`;
+    case "resource_link":
+      return `[resource_link ${String(block["name"])}: ${String(block["uri"])}]`;
+    default:
+      return `[${String(block["type"])} ${String(block["mimeType"])}]`;
+  }
 }
