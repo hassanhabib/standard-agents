@@ -217,6 +217,8 @@ export { FunctionUsageBroker } from "./brokers/usages/FunctionUsageBroker.js";
 export type { McpTool } from "./models/brokers/mcps/McpTool.js";
 export type { McpBroker } from "./brokers/mcps/McpBroker.js";
 export { CompositeMcpBroker } from "./brokers/mcps/CompositeMcpBroker.js";
+export { HttpMcpBroker } from "./brokers/mcps/HttpMcpBroker.js";
+export type { HttpMcpBrokerOptions } from "./brokers/mcps/HttpMcpBroker.js";
 export { NotConfiguredMcpBroker } from "./brokers/mcps/NotConfiguredMcpBroker.js";
 export { GateService } from "./services/foundations/gates/GateService.js";
 export { InvalidGateException } from "./models/foundations/gates/exceptions/InvalidGateException.js";
