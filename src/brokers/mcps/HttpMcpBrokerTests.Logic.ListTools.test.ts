@@ -4,6 +4,7 @@ import {
   acceptedReply,
   createHttpMcpBrokerTests,
   ENDPOINT_URL,
+  eventStreamReply,
   INITIALIZE_RESULT,
   jsonReply,
   methodOf,
@@ -47,5 +48,33 @@ describe("HttpMcpBroker list tools logic", () => {
     expect(actualTools).toEqual([
       { name: "find_student", description: "Finds a student by their id.", inputSchemaJson: JSON.stringify(FIND_STUDENT.inputSchema) },
     ]);
+  });
+
+  it("ShouldReadTheReplyFromAnEventStreamPastANotificationAsync", async () => {
+    // given — a server answering as the official SDKs do: an event stream, where a notification
+    // may arrive before the response it carries
+    const notification = { jsonrpc: "2.0", method: "notifications/message", params: { level: "info" } };
+    const listing = { jsonrpc: "2.0", id: 3, result: { tools: [FIND_STUDENT] } };
+    const initialization = { jsonrpc: "2.0", id: 1, result: INITIALIZE_RESULT };
+
+    const { mcpBroker } = createHttpMcpBrokerTests((request) => {
+      switch (methodOf(request)) {
+        case "initialize":
+          return eventStreamReply(`event: message\ndata: ${JSON.stringify(initialization)}\n\n`);
+        case "tools/list":
+          return eventStreamReply(
+            `event: message\ndata: ${JSON.stringify(notification)}\n\n` +
+              `event: message\ndata: ${JSON.stringify(listing)}\n\n`,
+          );
+        default:
+          return acceptedReply();
+      }
+    });
+
+    // when
+    const actualTools = await mcpBroker.listTools();
+
+    // then
+    expect(actualTools.map((tool) => tool.name)).toEqual(["find_student"]);
   });
 });
