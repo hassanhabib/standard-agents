@@ -42,6 +42,7 @@ export interface AgentConfiguration {
   sessionBroker: SessionBroker | null;
   maxHistoryTurns: number;
   mcpBroker: McpBroker | null;
+  mcpSources: McpBroker[];
   policyBroker: PolicyBroker | null;
   allowedTools: string[] | null;
   approvalBroker: ApprovalBroker | null;
@@ -86,6 +87,7 @@ export function createAgentConfiguration(): AgentConfiguration {
     sessionBroker: null,
     maxHistoryTurns: DEFAULT_MAX_HISTORY_TURNS,
     mcpBroker: null,
+    mcpSources: [],
     policyBroker: null,
     allowedTools: null,
     approvalBroker: null,

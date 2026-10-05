@@ -212,9 +212,10 @@ export class StandardAgent {
     });
   }
 
+  // Remote tool servers accumulate (SPEC.md 4.8): a second server adds, never replaces.
   public useMcp(broker: McpBroker): this {
     return this.set((configuration) => {
-      configuration.mcpBroker = broker;
+      configuration.mcpSources.push(broker);
     });
   }
 

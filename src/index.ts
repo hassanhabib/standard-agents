@@ -216,6 +216,7 @@ export { FunctionUsageBroker } from "./brokers/usages/FunctionUsageBroker.js";
 // Direction: external tools (SPEC.md 4.8 External).
 export type { McpTool } from "./models/brokers/mcps/McpTool.js";
 export type { McpBroker } from "./brokers/mcps/McpBroker.js";
+export { CompositeMcpBroker } from "./brokers/mcps/CompositeMcpBroker.js";
 export { NotConfiguredMcpBroker } from "./brokers/mcps/NotConfiguredMcpBroker.js";
 export { GateService } from "./services/foundations/gates/GateService.js";
 export { InvalidGateException } from "./models/foundations/gates/exceptions/InvalidGateException.js";
