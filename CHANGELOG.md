@@ -4,6 +4,54 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.16.0]
+
+Tracks SPEC v1.17, sections 4.1 and 4.8 (remote tool servers), as `Standard.Agents` 5.1.0.0 does.
+
+### Added
+
+- **The agent reaches MCP servers by itself.** Until now a remote tool server was reachable only
+  through a broker the host wrote. `mcp(endpointUrl, options)` reaches one by URL over the
+  protocol's Streamable HTTP transport, and `mcpProcess(command, args, { env, cwd })` starts one as
+  a process and speaks to it over its standard streams, which is how most servers people run with
+  `npx`, `uvx`, `dotnet` or `python` work. Both are built to the protocol rather than a dialect of
+  it, so a server built with any of the official SDKs answers. They were proven live against the
+  official C# SDK over HTTP (stateful and stateless) and over stdio.
+- `HttpMcpBroker`: JSON or event-stream replies, read past notifications; the `initialize`
+  lifecycle once, then the session and the negotiated protocol version on every request; a
+  session the server ended renewed and the request retried once; a server without `initialize`
+  used without a session; an API key in a header you name, a bearer token, or a token provider
+  asked before every request; every exchange bounded by the caller's signal and a timeout.
+- `StdioMcpBroker`: one message per line; stray output and notifications skipped; the server's
+  own `ping` answered; a line queue, so a reader that gave up never swallows the next answer;
+  started with its error stream drained, its pipes released so a finished script exits, and
+  stopped with the host. On Windows a bare command resolves through `PATH` and `PATHEXT`, and a
+  `.cmd` launcher starts through the shell, so `npx` works. It also runs over streams you hold.
+- Both read the whole paged catalog and drop nothing a tool returns: an embedded resource as its
+  text, a link as `[resource_link name: uri]`, an image as `[image image/png]`, and
+  `structuredContent` when there is no text.
+- `CompositeMcpBroker`, exported.
+- The conformance runner drives `mcpServers`, `mcpToolSchemas`, `extraSkills`, `selectTools` and
+  `enforceSelection`, and asserts `brainNeverSees` and `mcpServerCalls`. Vectors 45, 74, 75 and
+  76 pass.
+
+### Fixed
+
+- **A second MCP server adds, never replaces.** `useMcp` replaced the server registered before
+  it, which SPEC.md 4.8 forbids. Servers now accumulate, a call routes to the server whose own
+  catalog holds the name, the first registered wins a name two claim, and a server down at
+  discovery keeps only its own tools away.
+- **The package names itself by the version it published.** `STANDARD_AGENTS_VERSION`, the
+  version in every model request's `User-Agent`, was still `0.1.0`. A test now holds it to
+  `package.json`.
+
+### Upgrading
+
+Code that compiled against 0.15.0 compiles unchanged. A host that registered two servers with
+`useMcp` and relied on the second replacing the first now has both; register only the one it
+means. `AgentConfiguration` gains `mcpSources`, and a broker assigned to `mcpBroker` directly
+still works, counted as the first server.
+
 ## [0.15.0]
 
 Tracks SPEC v1.16, section 4.14.1 (spending).
