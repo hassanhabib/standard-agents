@@ -23,6 +23,7 @@ interface JsonRpcAnswer {
 
 const LATEST_PROTOCOL_VERSION = "2025-06-18";
 const OPEN_OBJECT_SCHEMA = "{}";
+const METHOD_NOT_FOUND = -32601;
 const FRAME_BOUNDARY = "\n\n";
 
 export class HttpMcpBroker implements McpBroker {
@@ -48,17 +49,29 @@ export class HttpMcpBroker implements McpBroker {
     throw new Error("not implemented");
   }
 
+  // The whole catalog, page by page: a catalog read to its first page shows the agent some of the
+  // server's tools and gives no sign that the rest exist. A cursor seen twice ends the walk.
   public async listTools(): Promise<readonly McpTool[]> {
     await this.ensureInitialized();
 
-    const result = await this.request("tools/list", undefined);
-    const tools = (result["tools"] ?? []) as readonly Record<string, unknown>[];
+    const tools: McpTool[] = [];
+    const visitedCursors = new Set<string>();
+    let cursor: string | undefined;
 
-    return tools.map((tool) => ({
-      name: String(tool["name"]),
-      description: typeof tool["description"] === "string" ? tool["description"] : "",
-      inputSchemaJson: tool["inputSchema"] === undefined ? OPEN_OBJECT_SCHEMA : JSON.stringify(tool["inputSchema"]),
-    }));
+    do {
+      const page = await this.request("tools/list", cursor === undefined ? undefined : { cursor });
+      const pageTools = (page["tools"] ?? []) as readonly Record<string, unknown>[];
+
+      tools.push(...pageTools.map((tool) => ({
+        name: String(tool["name"]),
+        description: typeof tool["description"] === "string" ? tool["description"] : "",
+        inputSchemaJson: tool["inputSchema"] === undefined ? OPEN_OBJECT_SCHEMA : JSON.stringify(tool["inputSchema"]),
+      })));
+
+      cursor = typeof page["nextCursor"] === "string" && page["nextCursor"].length > 0 ? page["nextCursor"] : undefined;
+    } while (cursor !== undefined && isFirstVisit(visitedCursors, cursor));
+
+    return tools;
   }
 
   private async ensureInitialized(): Promise<void> {
@@ -70,6 +83,8 @@ export class HttpMcpBroker implements McpBroker {
     await this.initialization;
   }
 
+  // A server older than the lifecycle refuses initialize as an unknown method and still answers
+  // everything else, so it is used without a session rather than failed.
   private async initialize(): Promise<void> {
     this.sessionId = null;
     this.protocolVersion = null;
@@ -80,7 +95,13 @@ export class HttpMcpBroker implements McpBroker {
       clientInfo: { name: "standard-agents", version: STANDARD_AGENTS_VERSION },
     }));
 
-    const result = await readResult(response);
+    const answer = await readAnswer(response);
+
+    if (answer.error?.code === METHOD_NOT_FOUND) {
+      return;
+    }
+
+    const result = resultOf(answer);
     this.sessionId = response.headers.get("mcp-session-id");
     this.protocolVersion = typeof result["protocolVersion"] === "string" ? result["protocolVersion"] : null;
 
@@ -147,19 +168,35 @@ export class HttpMcpBroker implements McpBroker {
 }
 
 async function readResult(response: Response): Promise<Record<string, unknown>> {
+  return resultOf(await readAnswer(response));
+}
+
+async function readAnswer(response: Response): Promise<JsonRpcAnswer> {
   if (!response.ok) {
     throw new HttpResponseException(response.status, await response.text(), response.headers.get("retry-after"));
   }
 
-  const answer = isEventStream(response)
+  return isEventStream(response)
     ? await readAnswerFromEventStream(response)
     : (JSON.parse(await response.text()) as JsonRpcAnswer);
+}
 
+function resultOf(answer: JsonRpcAnswer): Record<string, unknown> {
   if (answer.error !== undefined) {
     throw new Error(answer.error.message ?? "The MCP server answered with an error.");
   }
 
   return answer.result ?? {};
+}
+
+function isFirstVisit(visitedCursors: Set<string>, cursor: string): boolean {
+  if (visitedCursors.has(cursor)) {
+    return false;
+  }
+
+  visitedCursors.add(cursor);
+
+  return true;
 }
 
 function isEventStream(response: Response): boolean {
@@ -189,7 +226,7 @@ async function readAnswerFromEventStream(response: Response): Promise<JsonRpcAns
       let boundary = buffer.indexOf(FRAME_BOUNDARY);
 
       while (boundary >= 0) {
-        const answer = readAnswer(buffer.slice(0, boundary));
+        const answer = answerInFrame(buffer.slice(0, boundary));
         buffer = buffer.slice(boundary + FRAME_BOUNDARY.length);
 
         if (answer !== null) {
@@ -208,7 +245,7 @@ async function readAnswerFromEventStream(response: Response): Promise<JsonRpcAns
   }
 }
 
-function readAnswer(frame: string): JsonRpcAnswer | null {
+function answerInFrame(frame: string): JsonRpcAnswer | null {
   const data = frame
     .split("\n")
     .filter((line) => line.startsWith("data:"))
