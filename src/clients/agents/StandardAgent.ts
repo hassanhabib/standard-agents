@@ -13,6 +13,7 @@ import { FunctionKnowledgeBroker } from "../../brokers/knowledges/FunctionKnowle
 import type { KnowledgeBroker } from "../../brokers/knowledges/KnowledgeBroker.js";
 import type { LoggingBroker } from "../../brokers/loggings/LoggingBroker.js";
 import { StreamLoggingBroker } from "../../brokers/loggings/StreamLoggingBroker.js";
+import { HttpMcpBroker, type HttpMcpBrokerOptions } from "../../brokers/mcps/HttpMcpBroker.js";
 import type { McpBroker } from "../../brokers/mcps/McpBroker.js";
 import { FunctionMemoryBroker } from "../../brokers/memorys/FunctionMemoryBroker.js";
 import type { MemoryBroker } from "../../brokers/memorys/MemoryBroker.js";
@@ -210,6 +211,12 @@ export class StandardAgent {
       configuration.sessionBroker = broker;
       configuration.maxHistoryTurns = maxHistoryTurns;
     });
+  }
+
+  // A remote tool server by URL (SPEC.md 4.8 External), over the protocol's Streamable HTTP
+  // transport. Accumulates like useMcp: each call adds a server.
+  public mcp(endpointUrl: string, options: HttpMcpBrokerOptions = {}): this {
+    return this.useMcp(new HttpMcpBroker(endpointUrl, options));
   }
 
   // Remote tool servers accumulate (SPEC.md 4.8): a second server adds, never replaces.
