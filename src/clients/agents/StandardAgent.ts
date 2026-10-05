@@ -15,6 +15,7 @@ import type { LoggingBroker } from "../../brokers/loggings/LoggingBroker.js";
 import { StreamLoggingBroker } from "../../brokers/loggings/StreamLoggingBroker.js";
 import { HttpMcpBroker, type HttpMcpBrokerOptions } from "../../brokers/mcps/HttpMcpBroker.js";
 import type { McpBroker } from "../../brokers/mcps/McpBroker.js";
+import { StdioMcpBroker } from "../../brokers/mcps/StdioMcpBroker.js";
 import { FunctionMemoryBroker } from "../../brokers/memorys/FunctionMemoryBroker.js";
 import type { MemoryBroker } from "../../brokers/memorys/MemoryBroker.js";
 import { FunctionPolicyBroker } from "../../brokers/policies/FunctionPolicyBroker.js";
@@ -219,12 +220,23 @@ export class StandardAgent {
     return this.useMcp(new HttpMcpBroker(endpointUrl, options));
   }
 
+  // A remote tool server the agent starts as a process and speaks to over its standard streams
+  // (SPEC.md 4.8 External), the transport of the servers people run with npx, uvx, dotnet or
+  // python. On Windows a bare command resolves the way a shell would, so "npx" finds npx.cmd.
+  // Accumulates like useMcp: each call adds a server.
   public mcpProcess(
-    _command: string,
-    _args: readonly string[] = [],
-    _options: { readonly env?: Readonly<Record<string, string>>; readonly cwd?: string; readonly timeoutMilliseconds?: number } = {},
+    command: string,
+    args: readonly string[] = [],
+    options: { readonly env?: Readonly<Record<string, string>>; readonly cwd?: string; readonly timeoutMilliseconds?: number } = {},
   ): this {
-    throw new Error("not implemented");
+    const server = {
+      command,
+      args,
+      ...(options.env === undefined ? {} : { env: options.env }),
+      ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+    };
+
+    return this.useMcp(new StdioMcpBroker(server, options.timeoutMilliseconds));
   }
 
   // Remote tool servers accumulate (SPEC.md 4.8): a second server adds, never replaces.
