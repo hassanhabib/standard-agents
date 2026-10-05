@@ -9,7 +9,8 @@
 //
 // Sprint 1 wired the Core fields; SPEC v1.14 added what a tool declares about itself, the
 // repetition bound, and how a run ended; SPEC v1.15 added the streamed door and what a run spent,
-// read off the stream as it went. A vector carrying a setup or expectation field this
+// read off the stream as it went; SPEC v1.17's remote tool servers arrived with several at once,
+// with selection over what they offer. A vector carrying a setup or expectation field this
 // runner does not yet honor fails as unsupported, so a profile is never claimed on a vector
 // half-run.
 
@@ -17,14 +18,23 @@ import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { StandardAgent, type AgentOutcome, type AgentStreamEvent, type GeneratorBroker, type RiskLevel, type Tool } from "@hassanhabib/standard-agents";
+import {
+  StandardAgent,
+  type AgentOutcome,
+  type AgentStreamEvent,
+  type GeneratorBroker,
+  type McpBroker,
+  type McpTool,
+  type RiskLevel,
+  type Tool,
+} from "@hassanhabib/standard-agents";
 
 interface Vector {
   readonly name: string;
   readonly description: string;
   readonly file: string;
   readonly generatorReplies: readonly string[];
-  readonly tools: Readonly<Record<string, string>>;
+  readonly tools?: Readonly<Record<string, string>>;
   readonly prompt: string;
   readonly expect: Readonly<Record<string, unknown>>;
   readonly maxTurns?: number;
@@ -34,6 +44,15 @@ interface Vector {
   readonly identicalCallLimit?: number;
   readonly request?: Readonly<Record<string, unknown>>;
   readonly streamed?: boolean;
+  readonly mcpServers?: readonly Readonly<Record<string, string>>[];
+  readonly mcpToolSchemas?: Readonly<Record<string, string>>;
+  readonly extraSkills?: readonly string[];
+  readonly selectTools?: readonly string[];
+  readonly enforceSelection?: boolean;
+}
+
+interface ScriptedMcpServer extends McpBroker {
+  readonly callCount: () => number;
 }
 
 interface ScriptedGenerator extends GeneratorBroker {
@@ -71,6 +90,11 @@ const SUPPORTED_SETUP_FIELDS: ReadonlySet<string> = new Set([
   "identicalCallLimit",
   "request",
   "streamed",
+  "mcpServers",
+  "mcpToolSchemas",
+  "extraSkills",
+  "selectTools",
+  "enforceSelection",
 ]);
 
 const SUPPORTED_EXPECTATIONS: ReadonlySet<string> = new Set([
@@ -84,6 +108,8 @@ const SUPPORTED_EXPECTATIONS: ReadonlySet<string> = new Set([
   "brainSees",
   "usageEvents",
   "usageEstimated",
+  "brainNeverSees",
+  "mcpServerCalls",
 ]);
 
 const referenceRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "reference", "conformance");
@@ -143,6 +169,29 @@ function createStubTool(name: string, output: string, vector: Vector): StubTool 
   };
 }
 
+// A remote tool server, scripted (runner contract 4): its catalog is the tools the vector gave it,
+// every one described, a declared schema where the vector gives one and an open object where it
+// does not, and every call counted - routing across servers is certified by the owner being
+// called and the bystander not (SPEC.md 4.8).
+function createScriptedMcpServer(catalog: Readonly<Record<string, string>>, vector: Vector): ScriptedMcpServer {
+  let calls = 0;
+
+  return {
+    callCount: () => calls,
+    call: async (name: string) => {
+      calls += 1;
+
+      return catalog[name] ?? `[external '${name}' not configured]`;
+    },
+    listTools: async (): Promise<readonly McpTool[]> =>
+      Object.keys(catalog).map((name) => ({
+        name,
+        description: `scripted tool ${name}`,
+        inputSchemaJson: vector.mcpToolSchemas?.[name] ?? "{}",
+      })),
+  };
+}
+
 // A request with nothing in it only says "read the outcome", which is the one door this runner
 // drives. A request that carries inference options is not honored yet, so it is unsupported.
 function unsupportedFields(vector: Vector): string[] {
@@ -159,6 +208,7 @@ function assertExpectations(
   tools: readonly StubTool[],
   brainInputs: readonly string[],
   events: readonly AgentStreamEvent[],
+  mcpServers: readonly ScriptedMcpServer[],
 ): string[] {
   const failures: string[] = [...usageFailures(vector, events)];
   const expected = vector.expect;
@@ -174,6 +224,20 @@ function assertExpectations(
 
   if (typeof expected["brainSees"] === "string" && !brainInputs.some((input) => input.includes(String(expected["brainSees"])))) {
     failures.push(`brainSees: the Brain was never shown ${JSON.stringify(expected["brainSees"])}`);
+  }
+
+  if (typeof expected["brainNeverSees"] === "string" && brainInputs.some((input) => input.includes(String(expected["brainNeverSees"])))) {
+    failures.push(`brainNeverSees: the Brain was shown text that should have been withheld: ${JSON.stringify(expected["brainNeverSees"])}`);
+  }
+
+  const mcpServerCalls = expected["mcpServerCalls"];
+
+  if (Array.isArray(mcpServerCalls)) {
+    const actualCalls = mcpServers.map((server) => server.callCount());
+
+    if (JSON.stringify(actualCalls) !== JSON.stringify(mcpServerCalls)) {
+      failures.push(`mcpServerCalls: server calls were ${JSON.stringify(actualCalls)}, expected ${JSON.stringify(mcpServerCalls)}`);
+    }
   }
 
   if (typeof expected["result"] === "string" && outcome.result !== expected["result"]) {
@@ -283,7 +347,7 @@ async function runVector(vector: Vector): Promise<VectorResult> {
     return { vector, passed: false, detail: `unsupported field(s) in this runner: ${unsupported.join(", ")}` };
   }
 
-  const tools = Object.entries(vector.tools).map(([name, output]) => createStubTool(name, output, vector));
+  const tools = Object.entries(vector.tools ?? {}).map(([name, output]) => createStubTool(name, output, vector));
   const generator = createScriptedGenerator(vector.generatorReplies);
 
   // Runner contract 3: Skill returns any text; Memory, Knowledge and the remote servers stay not
@@ -302,6 +366,30 @@ async function runVector(vector: Vector): Promise<VectorResult> {
     agent.identicalCallLimit(vector.identicalCallLimit);
   }
 
+  // Plural integrations (SPEC.md 4.8): scripted servers join in registration order, because the
+  // order is the contract under contention, and each extra skill source accumulates after the
+  // harness's own through the same client verb a host would use.
+  const mcpServers = (vector.mcpServers ?? []).map((catalog) => createScriptedMcpServer(catalog, vector));
+
+  for (const server of mcpServers) {
+    agent.useMcp(server);
+  }
+
+  for (const extraSkill of vector.extraSkills ?? []) {
+    agent.onSkills(async () => [{ name: `extra-${String(extraSkill.length)}`, description: "", content: extraSkill }]);
+  }
+
+  // Selection (SPEC.md 4.15): the vector names what the run is offered, and whether it binds.
+  const selectedTools = vector.selectTools;
+
+  if (selectedTools !== undefined) {
+    agent.onSelectTools(async () => selectedTools);
+  }
+
+  if (vector.enforceSelection === true) {
+    agent.enforceSelection();
+  }
+
   try {
     // A streamed vector is driven through the streamed door, and what that door yielded is kept,
     // because some guarantees are only observable on the stream itself.
@@ -311,7 +399,7 @@ async function runVector(vector: Vector): Promise<VectorResult> {
       ? await agent.runStream(vector.prompt, async (event) => { events.push(event); })
       : await agent.runAsync(vector.prompt);
 
-    const failures = assertExpectations(vector, outcome, tools, generator.inputs, events);
+    const failures = assertExpectations(vector, outcome, tools, generator.inputs, events, mcpServers);
 
     return failures.length === 0
       ? { vector, passed: true, detail: `${outcome.status}: ${firstLine(outcome.result)}` }
