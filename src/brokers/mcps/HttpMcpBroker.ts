@@ -25,6 +25,8 @@ const LATEST_PROTOCOL_VERSION = "2025-06-18";
 const OPEN_OBJECT_SCHEMA = "{}";
 const METHOD_NOT_FOUND = -32601;
 const FRAME_BOUNDARY = "\n\n";
+const DEFAULT_TIMEOUT_MILLISECONDS = 30_000;
+const DEFAULT_API_KEY_HEADER = "X-Api-Key";
 
 export class HttpMcpBroker implements McpBroker {
   private readonly url: string;
@@ -48,10 +50,10 @@ export class HttpMcpBroker implements McpBroker {
   // The arguments travel as the object the model wrote. Nothing the tool returns is dropped: what
   // the brain cannot read as text reaches it as a marker of what came back, and a result carried
   // only as structured content reaches it as that JSON.
-  public async call(name: string, argumentsJson: string, _signal?: AbortSignal): Promise<string> {
+  public async call(name: string, argumentsJson: string, signal?: AbortSignal): Promise<string> {
     await this.ensureInitialized();
 
-    const result = await this.request("tools/call", { name, arguments: JSON.parse(argumentsJson) as unknown });
+    const result = await this.request("tools/call", { name, arguments: JSON.parse(argumentsJson) as unknown }, signal);
     const content = (result["content"] ?? []) as readonly Record<string, unknown>[];
     const text = content.map((block) => textOf(block)).join("");
 
@@ -68,7 +70,7 @@ export class HttpMcpBroker implements McpBroker {
     let cursor: string | undefined;
 
     do {
-      const page = await this.request("tools/list", cursor === undefined ? undefined : { cursor });
+      const page = await this.request("tools/list", cursor === undefined ? undefined : { cursor }, undefined);
       const pageTools = (page["tools"] ?? []) as readonly Record<string, unknown>[];
 
       tools.push(...pageTools.map((tool) => ({
@@ -98,43 +100,61 @@ export class HttpMcpBroker implements McpBroker {
     this.sessionId = null;
     this.protocolVersion = null;
 
-    const response = await this.post(this.message("initialize", {
+    const initializeMessage = this.message("initialize", {
       protocolVersion: LATEST_PROTOCOL_VERSION,
       capabilities: {},
       clientInfo: { name: "standard-agents", version: STANDARD_AGENTS_VERSION },
-    }));
+    });
 
-    const answer = await readAnswer(response);
+    await this.withDeadline(undefined, async (deadline) => {
+      const response = await this.post(initializeMessage, deadline);
+      const answer = await readAnswer(response);
 
-    if (answer.error?.code === METHOD_NOT_FOUND) {
-      return;
-    }
+      if (answer.error?.code === METHOD_NOT_FOUND) {
+        return;
+      }
 
-    const result = resultOf(answer);
-    this.sessionId = response.headers.get("mcp-session-id");
-    this.protocolVersion = typeof result["protocolVersion"] === "string" ? result["protocolVersion"] : null;
+      const result = resultOf(answer);
+      this.sessionId = response.headers.get("mcp-session-id");
+      this.protocolVersion = typeof result["protocolVersion"] === "string" ? result["protocolVersion"] : null;
 
-    await this.notify("notifications/initialized");
+      const notification = await this.post({ jsonrpc: "2.0", method: "notifications/initialized" }, deadline);
+      await notification.text();
+    });
   }
 
   // A session the server has ended answers 404 (the protocol's word for it): a new one is opened,
   // once, by whichever request found it gone, and the request is sent again on it.
-  private async request(method: string, params: Record<string, unknown> | undefined): Promise<Record<string, unknown>> {
+  private async request(
+    method: string,
+    params: Record<string, unknown> | undefined,
+    signal: AbortSignal | undefined,
+  ): Promise<Record<string, unknown>> {
     const message = this.message(method, params);
     const sentSessionId = this.sessionId;
-    const response = await this.post(message);
 
-    if (response.status === 404 && sentSessionId !== null) {
-      await response.text();
-      await this.renewSession(sentSessionId);
+    const answer = await this.withDeadline(signal, async (deadline) => {
+      const response = await this.post(message, deadline);
 
-      return await readResult(await this.post(message));
+      if (response.status === 404 && sentSessionId !== null) {
+        await response.text();
+
+        return null;
+      }
+
+      return await readAnswer(response);
+    });
+
+    if (answer !== null) {
+      return resultOf(answer);
     }
 
-    return await readResult(response);
+    await this.renewSession(sentSessionId);
+
+    return resultOf(await this.withDeadline(signal, async (deadline) => await readAnswer(await this.post(message, deadline))));
   }
 
-  private async renewSession(expiredSessionId: string): Promise<void> {
+  private async renewSession(expiredSessionId: string | null): Promise<void> {
     if (this.sessionId === expiredSessionId) {
       this.initialization = null;
     }
@@ -153,31 +173,61 @@ export class HttpMcpBroker implements McpBroker {
     };
   }
 
-  private async notify(method: string): Promise<void> {
-    const response = await this.post({ jsonrpc: "2.0", method });
-    await response.text();
+  // One exchange, bounded twice: by the caller's Stop, and by the timeout, so a server that never
+  // answers cannot hold a run forever. The bound covers reading the answer, not only sending.
+  private async withDeadline<T>(signal: AbortSignal | undefined, exchange: (deadline: AbortSignal) => Promise<T>): Promise<T> {
+    const controller = new AbortController();
+    const timeoutMilliseconds = this.options.timeoutMilliseconds ?? DEFAULT_TIMEOUT_MILLISECONDS;
+
+    const timer = setTimeout(() => {
+      controller.abort(new Error(`The MCP server did not answer within ${String(timeoutMilliseconds)} ms.`));
+    }, timeoutMilliseconds);
+
+    const stop = (): void => {
+      controller.abort(signal?.reason);
+    };
+
+    if (signal?.aborted === true) {
+      stop();
+    }
+
+    signal?.addEventListener("abort", stop, { once: true });
+
+    try {
+      return await exchange(controller.signal);
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", stop);
+    }
   }
 
-  private async post(message: Record<string, unknown>): Promise<Response> {
+  private async post(message: Record<string, unknown>, deadline: AbortSignal): Promise<Response> {
+    deadline.throwIfAborted();
+
     return await this.fetchResource(this.url, {
       method: "POST",
       headers: await this.headers(),
       body: JSON.stringify(message),
+      signal: deadline,
     });
   }
 
+  // The credentials ride every request. A token provider is asked each time, because the access
+  // token from composition time expires, and it wins over a static token.
   private async headers(): Promise<Record<string, string>> {
+    const bearerToken = this.options.bearerTokenProvider === undefined
+      ? this.options.bearerToken
+      : await this.options.bearerTokenProvider();
+
     return {
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
       ...(this.sessionId === null ? {} : { "Mcp-Session-Id": this.sessionId }),
       ...(this.protocolVersion === null ? {} : { "MCP-Protocol-Version": this.protocolVersion }),
+      ...(this.options.apiKey === undefined ? {} : { [this.options.apiKeyHeader ?? DEFAULT_API_KEY_HEADER]: this.options.apiKey }),
+      ...(bearerToken === undefined || bearerToken.length === 0 ? {} : { Authorization: `Bearer ${bearerToken}` }),
     };
   }
-}
-
-async function readResult(response: Response): Promise<Record<string, unknown>> {
-  return resultOf(await readAnswer(response));
 }
 
 async function readAnswer(response: Response): Promise<JsonRpcAnswer> {
