@@ -5,6 +5,8 @@ import { InMemoryEffectLedgerBroker } from "../../brokers/effects/InMemoryEffect
 import { NotConfiguredKnowledgeBroker } from "../../brokers/knowledges/NotConfiguredKnowledgeBroker.js";
 import type { LoggingBroker } from "../../brokers/loggings/LoggingBroker.js";
 import { NotConfiguredLoggingBroker } from "../../brokers/loggings/NotConfiguredLoggingBroker.js";
+import { CompositeMcpBroker } from "../../brokers/mcps/CompositeMcpBroker.js";
+import type { McpBroker } from "../../brokers/mcps/McpBroker.js";
 import { NotConfiguredMcpBroker } from "../../brokers/mcps/NotConfiguredMcpBroker.js";
 import { NotConfiguredMemoryBroker } from "../../brokers/memorys/NotConfiguredMemoryBroker.js";
 import { AllowListPolicyBroker } from "../../brokers/policies/AllowListPolicyBroker.js";
@@ -61,7 +63,7 @@ export function compose(configuration: AgentConfiguration): RunManagementService
 
   // One foundation over the remote tools, shared by the two natures that need it: Data
   // advertises what the servers offer, Direction performs what the Brain chose.
-  const externalToolService = new ExternalToolService(configuration.mcpBroker ?? new NotConfiguredMcpBroker(), logging);
+  const externalToolService = new ExternalToolService(mcpBrokerOf(configuration), logging);
 
   // The Data nature: what was authored, selected by relevance, and what the agent accumulated.
   const dataCoordinationService = new DataCoordinationService(
@@ -177,4 +179,18 @@ function skillBrokerOf(sources: readonly SkillBroker[]): SkillBroker {
   }
 
   return sources.length === 1 ? first : new CompositeSkillBroker(sources);
+}
+
+// The remote tool servers as one broker: none is the not-configured broker, one is itself, and
+// several route by ownership. A broker assigned to the configuration directly counts as the first.
+function mcpBrokerOf(configuration: AgentConfiguration): McpBroker {
+  const servers = configuration.mcpBroker === null
+    ? configuration.mcpSources
+    : [configuration.mcpBroker, ...configuration.mcpSources];
+
+  if (servers.length === 0) {
+    return new NotConfiguredMcpBroker();
+  }
+
+  return servers.length === 1 && servers[0] !== undefined ? servers[0] : new CompositeMcpBroker(servers);
 }
