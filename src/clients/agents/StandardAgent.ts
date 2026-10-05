@@ -13,6 +13,7 @@ import { FunctionKnowledgeBroker } from "../../brokers/knowledges/FunctionKnowle
 import type { KnowledgeBroker } from "../../brokers/knowledges/KnowledgeBroker.js";
 import type { LoggingBroker } from "../../brokers/loggings/LoggingBroker.js";
 import { StreamLoggingBroker } from "../../brokers/loggings/StreamLoggingBroker.js";
+import type { HttpMcpBrokerOptions } from "../../brokers/mcps/HttpMcpBroker.js";
 import type { McpBroker } from "../../brokers/mcps/McpBroker.js";
 import { FunctionMemoryBroker } from "../../brokers/memorys/FunctionMemoryBroker.js";
 import type { MemoryBroker } from "../../brokers/memorys/MemoryBroker.js";
@@ -210,6 +211,10 @@ export class StandardAgent {
       configuration.sessionBroker = broker;
       configuration.maxHistoryTurns = maxHistoryTurns;
     });
+  }
+
+  public mcp(_endpointUrl: string, _options: HttpMcpBrokerOptions = {}): this {
+    throw new Error("not implemented");
   }
 
   // Remote tool servers accumulate (SPEC.md 4.8): a second server adds, never replaces.
