@@ -36,6 +36,19 @@ const answer = await agent.processPrompt("what is 19 times 23");
 The agent is the door. There is no builder to hold, no runtime to start, and no mandatory
 build step: composing it is the same sentence as using it.
 
+## MCP servers
+
+Tools you did not write arrive over the Model Context Protocol, by URL or as a process the agent
+starts. Any server built with one of the protocol's official SDKs answers, and servers
+accumulate: a call routes to the server whose own catalog holds the tool.
+
+```ts
+const agent = new StandardAgent()
+  .nativeBrain("https://api.example.com/v1/", apiKey, "a-model")
+  .mcp("https://tools.example.com/", { relativeUrl: "mcp", apiKey: toolsKey })
+  .mcpProcess("npx", ["-y", "@modelcontextprotocol/server-everything"]);
+```
+
 ## What is in it
 
 - The tri-nature loop, one copy, with the reply protocol and tool routing.
@@ -61,9 +74,9 @@ npm run conformance
 | 0.1.0 | Core |
 
 **Core is claimed: 6 of 6.** Critical, Enterprise and Reliable are not claimable yet, and the
-reason is the runner rather than the implementation. It does not yet drive the vector fields
-those profiles use (`streamed`, `nativeReplies`, `mcpServers`, `redact`, `concurrent` and the
-rest), so those vectors do not execute. No vector has been run against this implementation and
+reason is the runner rather than the implementation. It does not yet drive every vector field
+those profiles use (`nativeReplies`, `redact`, `concurrent`, `configurationJson` and the rest),
+so those vectors do not execute. The remote tool server vectors (45, 74, 75, 76) do, and pass. No vector has been run against this implementation and
 failed, which is not the same thing as passing, and the claim says only what was proven.
 
 A claim is per released version and is only ever raised by a green run of the runner.
