@@ -7,6 +7,7 @@ export interface RecordedMcpRequest {
   readonly url: string;
   readonly headers: Readonly<Record<string, string>>;
   readonly body: Record<string, unknown>;
+  readonly signal: AbortSignal | null;
 }
 
 export interface HttpMcpBrokerTestContext {
@@ -17,7 +18,7 @@ export interface HttpMcpBrokerTestContext {
 export const ENDPOINT_URL = "https://mcp.example.test/";
 
 export function createHttpMcpBrokerTests(
-  respond: (request: RecordedMcpRequest) => Response,
+  respond: (request: RecordedMcpRequest) => Response | Promise<Response>,
   options: HttpMcpBrokerOptions = {},
 ): HttpMcpBrokerTestContext {
   const requests: RecordedMcpRequest[] = [];
@@ -26,7 +27,7 @@ export function createHttpMcpBrokerTests(
     const request = readRequest(String(input), init ?? {});
     requests.push(request);
 
-    return respond(request);
+    return await respond(request);
   };
 
   return { requests, mcpBroker: new HttpMcpBroker(ENDPOINT_URL, options, fetchResource) };
@@ -71,5 +72,10 @@ function readRequest(url: string, init: RequestInit): RecordedMcpRequest {
     headers[name.toLowerCase()] = value;
   });
 
-  return { url, headers, body: JSON.parse(String(init.body ?? "{}")) as Record<string, unknown> };
+  return {
+    url,
+    headers,
+    body: JSON.parse(String(init.body ?? "{}")) as Record<string, unknown>,
+    signal: init.signal ?? null,
+  };
 }
