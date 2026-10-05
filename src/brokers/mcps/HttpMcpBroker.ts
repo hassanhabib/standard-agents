@@ -45,8 +45,17 @@ export class HttpMcpBroker implements McpBroker {
     this.fetchResource = fetchResource;
   }
 
-  public async call(_name: string, _argumentsJson: string, _signal?: AbortSignal): Promise<string> {
-    throw new Error("not implemented");
+  // The arguments travel as the object the model wrote. Nothing the tool returns is dropped: what
+  // the brain cannot read as text reaches it as a marker of what came back, and a result carried
+  // only as structured content reaches it as that JSON.
+  public async call(name: string, argumentsJson: string, _signal?: AbortSignal): Promise<string> {
+    await this.ensureInitialized();
+
+    const result = await this.request("tools/call", { name, arguments: JSON.parse(argumentsJson) as unknown });
+    const content = (result["content"] ?? []) as readonly Record<string, unknown>[];
+    const text = content.map((block) => textOf(block)).join("");
+
+    return text.length === 0 && result["structuredContent"] !== undefined ? JSON.stringify(result["structuredContent"]) : text;
   }
 
   // The whole catalog, page by page: a catalog read to its first page shows the agent some of the
@@ -187,6 +196,21 @@ function resultOf(answer: JsonRpcAnswer): Record<string, unknown> {
   }
 
   return answer.result ?? {};
+}
+
+function textOf(block: Record<string, unknown>): string {
+  const resource = block["resource"] as Record<string, unknown> | undefined;
+
+  switch (block["type"]) {
+    case "text":
+      return typeof block["text"] === "string" ? block["text"] : "";
+    case "resource":
+      return typeof resource?.["text"] === "string" ? resource["text"] : `[resource ${String(resource?.["uri"])}]`;
+    case "resource_link":
+      return `[resource_link ${String(block["name"])}: ${String(block["uri"])}]`;
+    default:
+      return `[${String(block["type"])} ${String(block["mimeType"])}]`;
+  }
 }
 
 function isFirstVisit(visitedCursors: Set<string>, cursor: string): boolean {
