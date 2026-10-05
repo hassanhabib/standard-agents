@@ -1,5 +1,8 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -77,5 +80,40 @@ describe("StandardAgent remote server logic", () => {
 
     // then — the tool was found in the server's catalog, called, and its answer came back
     expect(brain.calls[1]?.userPrompt).toContain("student 1 is Hassan");
+  });
+
+  it("ShouldStartAnMcpServerProcessAndCallItsToolAsync", async () => {
+    // given — a real MCP server process the agent starts itself, with an argument and an
+    // environment variable it must pass through
+    const serverPath = join(mkdtempSync(join(tmpdir(), "standard-agents-mcp-")), "students-server.mjs");
+
+    writeFileSync(
+      serverPath,
+      [
+        'import { createInterface } from "node:readline";',
+        'createInterface({ input: process.stdin }).on("line", (line) => {',
+        "  const message = JSON.parse(line);",
+        "  if (message.id === undefined) return;",
+        '  const result = message.method === "initialize"',
+        '    ? { protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "students", version: "1.0.0" } }',
+        '    : message.method === "tools/list"',
+        '      ? { tools: [{ name: "find_student", description: "Finds a student by their id.", inputSchema: { type: "object" } }] }',
+        '      : { content: [{ type: "text", text: "student " + message.params.arguments.id + " is Hassan, at " + process.env.STUDENTS_SCHOOL + ", for the " + process.argv[2] + " term" }] };',
+        '  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }) + "\\n");',
+        "});",
+      ].join("\n"),
+    );
+
+    const brain = createScriptedBrain(['ACTION: find_student: {"id":1}', "FINAL: done"]);
+
+    const agent = new StandardAgent()
+      .onBrain(brain.generate)
+      .mcpProcess(process.execPath, [serverPath, "fall"], { env: { STUDENTS_SCHOOL: "Redmond High" } });
+
+    // when
+    await agent.processPrompt(createRandomString());
+
+    // then — the process's catalog was read, its tool called, and the answer reached the brain
+    expect(brain.calls[1]?.userPrompt).toContain("student 1 is Hassan, at Redmond High, for the fall term");
   });
 });
