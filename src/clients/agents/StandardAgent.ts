@@ -219,6 +219,14 @@ export class StandardAgent {
     return this.useMcp(new HttpMcpBroker(endpointUrl, options));
   }
 
+  public mcpProcess(
+    _command: string,
+    _args: readonly string[] = [],
+    _options: { readonly env?: Readonly<Record<string, string>>; readonly cwd?: string; readonly timeoutMilliseconds?: number } = {},
+  ): this {
+    throw new Error("not implemented");
+  }
+
   // Remote tool servers accumulate (SPEC.md 4.8): a second server adds, never replaces.
   public useMcp(broker: McpBroker): this {
     return this.set((configuration) => {
