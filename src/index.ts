@@ -218,6 +218,8 @@ export type { McpTool } from "./models/brokers/mcps/McpTool.js";
 export type { McpBroker } from "./brokers/mcps/McpBroker.js";
 export { CompositeMcpBroker } from "./brokers/mcps/CompositeMcpBroker.js";
 export { HttpMcpBroker } from "./brokers/mcps/HttpMcpBroker.js";
+export { StdioMcpBroker } from "./brokers/mcps/StdioMcpBroker.js";
+export type { StdioMcpCommand, StdioMcpServer, StdioMcpStreams } from "./brokers/mcps/StdioMcpBroker.js";
 export type { HttpMcpBrokerOptions } from "./brokers/mcps/HttpMcpBroker.js";
 export { NotConfiguredMcpBroker } from "./brokers/mcps/NotConfiguredMcpBroker.js";
 export { GateService } from "./services/foundations/gates/GateService.js";
