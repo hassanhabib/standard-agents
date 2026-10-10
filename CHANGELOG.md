@@ -4,6 +4,28 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.18.0]
+
+Tracks SPEC v1.18, section 4.2 (the Local knowledge mode), as `Standard.Agents` 6.0.0.0 does.
+
+### Added
+
+- **A folder of documents is knowledge, and it is citable out of the box.**
+  `knowledge(path, pattern = "*.md", maxResults = 3, minScore = 0)` reads every document the
+  pattern names in the folder and beneath it, through the file broker, and seeds the most relevant
+  passages into each turn. The ranking is the reference's, constant for constant: documents in
+  ordinal path order, overlapping windows of 120 words every 60, terms split on the same
+  separators with the same noise words dropped, each query term weighted by how rare it is across
+  the folder, divided by the square root of the passage's length. A passage carrying no query
+  term is never returned, nor one below `minScore`, and at most `maxResults` reach a turn. Each
+  passage is sourced with its document's path relative to the folder, with forward slashes on
+  every platform, so `citeKnowledge()` credits it with nothing else configured. A knowledge
+  broker, when one is configured, answers instead, whatever order the verbs were called in. The
+  pattern matches regardless of case, so `*.md` finds `README.MD` on every platform.
+- The conformance runner drives `knowledge`, `knowledgeMaxResults` and `gateVerdict`. Every
+  citation vector, 84 through 88, now passes, and so do 08 (gate-refusal-short-circuits) and 22
+  (knowledge-retrieves-by-relevance): 24 of 88, up from 18.
+
 ## [0.17.0]
 
 Tracks SPEC v1.18, sections 3.2, 3.7, 4.1 and 4.2 (sourced knowledge and citation), as
