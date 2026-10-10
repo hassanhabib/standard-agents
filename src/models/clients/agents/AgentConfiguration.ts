@@ -21,6 +21,7 @@ import type { ToolSelector } from "../../coordinations/agents/ToolSelector.js";
 import type { PermissionMode } from "../../orchestrations/effects/PermissionMode.js";
 import type { RiskLevel } from "../../orchestrations/effects/RiskLevel.js";
 import { DEFAULT_ELISION_WINDOW } from "../../foundations/brains/NativeAsk.js";
+import type { KnowledgeFolder } from "../../foundations/knowledges/KnowledgeFolder.js";
 import { DEFAULT_IDENTICAL_CALL_LIMIT, DEFAULT_KNOWLEDGE_CITATION_PREFIX, DEFAULT_MAX_HISTORY_TURNS, DEFAULT_MAX_TURNS } from "../../managements/runs/RunOptions.js";
 
 // What the builder verbs recorded, before anything is composed (SPEC.md 4.8). A null broker
@@ -40,6 +41,10 @@ export interface AgentConfiguration {
   contractSchema: string;
   memoryBroker: MemoryBroker | null;
   knowledgeBroker: KnowledgeBroker | SourcedKnowledgeBroker | null;
+
+  // The Local knowledge mode (SPEC.md 4.2): a folder read only when no knowledge broker was
+  // configured, because a broker is the External mode and answers for itself.
+  knowledgeFolder: KnowledgeFolder | null;
   sessionBroker: SessionBroker | null;
   maxHistoryTurns: number;
   mcpBroker: McpBroker | null;
@@ -90,6 +95,7 @@ export function createAgentConfiguration(): AgentConfiguration {
     contractSchema: "",
     memoryBroker: null,
     knowledgeBroker: null,
+    knowledgeFolder: null,
     sessionBroker: null,
     maxHistoryTurns: DEFAULT_MAX_HISTORY_TURNS,
     mcpBroker: null,

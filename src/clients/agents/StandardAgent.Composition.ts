@@ -1,7 +1,10 @@
+import { resolve } from "node:path";
+
 import { NotConfiguredApprovalBroker } from "../../brokers/approvals/NotConfiguredApprovalBroker.js";
 import { NotConfiguredClassifierBroker } from "../../brokers/classifiers/NotConfiguredClassifierBroker.js";
 import { RuleContractBroker } from "../../brokers/contracts/RuleContractBroker.js";
 import { InMemoryEffectLedgerBroker } from "../../brokers/effects/InMemoryEffectLedgerBroker.js";
+import { NodeFileBroker } from "../../brokers/files/NodeFileBroker.js";
 import { NotConfiguredKnowledgeBroker } from "../../brokers/knowledges/NotConfiguredKnowledgeBroker.js";
 import type { LoggingBroker } from "../../brokers/loggings/LoggingBroker.js";
 import { NotConfiguredLoggingBroker } from "../../brokers/loggings/NotConfiguredLoggingBroker.js";
@@ -69,7 +72,7 @@ export function compose(configuration: AgentConfiguration): RunManagementService
   const dataCoordinationService = new DataCoordinationService(
     new RetrievalOrchestrationService(
       new SkillService(skillBrokerOf(configuration.skillSources), logging),
-      new KnowledgeService(configuration.knowledgeBroker ?? new NotConfiguredKnowledgeBroker(), logging),
+      knowledgeServiceOf(configuration, logging),
       externalToolService,
       logging,
       renderToolCatalog(tools),
@@ -181,6 +184,23 @@ function skillBrokerOf(sources: readonly SkillBroker[]): SkillBroker {
   }
 
   return sources.length === 1 ? first : new CompositeSkillBroker(sources);
+}
+
+// Knowledge from a broker when one was configured, the External mode; otherwise from the folder
+// the host named, the Local mode, read through the file broker from its full path so its sources
+// stay relative to it wherever the process runs; otherwise from nowhere.
+function knowledgeServiceOf(configuration: AgentConfiguration, logging: LoggingBroker): KnowledgeService {
+  if (configuration.knowledgeBroker !== null) {
+    return new KnowledgeService(configuration.knowledgeBroker, logging);
+  }
+
+  const knowledgeFolder = configuration.knowledgeFolder;
+
+  if (knowledgeFolder !== null) {
+    return new KnowledgeService(new NodeFileBroker(), logging, { ...knowledgeFolder, path: resolve(knowledgeFolder.path) });
+  }
+
+  return new KnowledgeService(new NotConfiguredKnowledgeBroker(), logging);
 }
 
 // The remote tool servers as one broker: none is the not-configured broker, one is itself, and
