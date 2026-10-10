@@ -5,6 +5,7 @@ import type { EffectLedgerBroker } from "../../../brokers/effects/EffectLedgerBr
 import type { GeneratorBroker } from "../../../brokers/generators/GeneratorBroker.js";
 import type { GeneratorBrokerV1 } from "../../../brokers/generators/GeneratorBrokerV1.js";
 import type { KnowledgeBroker } from "../../../brokers/knowledges/KnowledgeBroker.js";
+import type { SourcedKnowledgeBroker } from "../../../brokers/knowledges/SourcedKnowledgeBroker.js";
 import type { LoggingBroker } from "../../../brokers/loggings/LoggingBroker.js";
 import type { McpBroker } from "../../../brokers/mcps/McpBroker.js";
 import type { MemoryBroker } from "../../../brokers/memorys/MemoryBroker.js";
@@ -20,7 +21,7 @@ import type { ToolSelector } from "../../coordinations/agents/ToolSelector.js";
 import type { PermissionMode } from "../../orchestrations/effects/PermissionMode.js";
 import type { RiskLevel } from "../../orchestrations/effects/RiskLevel.js";
 import { DEFAULT_ELISION_WINDOW } from "../../foundations/brains/NativeAsk.js";
-import { DEFAULT_IDENTICAL_CALL_LIMIT, DEFAULT_MAX_HISTORY_TURNS, DEFAULT_MAX_TURNS } from "../../managements/runs/RunOptions.js";
+import { DEFAULT_IDENTICAL_CALL_LIMIT, DEFAULT_KNOWLEDGE_CITATION_PREFIX, DEFAULT_MAX_HISTORY_TURNS, DEFAULT_MAX_TURNS } from "../../managements/runs/RunOptions.js";
 
 // What the builder verbs recorded, before anything is composed (SPEC.md 4.8). A null broker
 // means the host expressed no opinion and the composition supplies the not-configured one; an
@@ -38,7 +39,7 @@ export interface AgentConfiguration {
   contractBroker: ContractBroker | null;
   contractSchema: string;
   memoryBroker: MemoryBroker | null;
-  knowledgeBroker: KnowledgeBroker | null;
+  knowledgeBroker: KnowledgeBroker | SourcedKnowledgeBroker | null;
   sessionBroker: SessionBroker | null;
   maxHistoryTurns: number;
   mcpBroker: McpBroker | null;
@@ -59,6 +60,11 @@ export interface AgentConfiguration {
 
   // How many times a run may ask for the same act before the loop ends it.
   identicalCallLimit: number;
+
+  // Citation (SPEC.md 4.2, v1.18): null when the deployment expressed no opinion, and what each
+  // citation line starts with.
+  citeKnowledge: boolean | null;
+  citationPrefix: string;
 
   // How many of the most recent calls a native turn sends whole. Older ones keep what they were
   // and lose what they returned.
@@ -102,6 +108,8 @@ export function createAgentConfiguration(): AgentConfiguration {
     screenToolOutput: false,
     maxTurns: DEFAULT_MAX_TURNS,
     identicalCallLimit: DEFAULT_IDENTICAL_CALL_LIMIT,
+    citeKnowledge: null,
+    citationPrefix: DEFAULT_KNOWLEDGE_CITATION_PREFIX,
     elisionWindow: DEFAULT_ELISION_WINDOW,
     budget: null,
     usageBroker: null,

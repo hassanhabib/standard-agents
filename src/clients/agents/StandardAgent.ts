@@ -11,6 +11,7 @@ import { HttpGeneratorBrokerV1 } from "../../brokers/generators/HttpGeneratorBro
 import { HttpGeneratorBroker } from "../../brokers/generators/HttpGeneratorBroker.js";
 import { FunctionKnowledgeBroker } from "../../brokers/knowledges/FunctionKnowledgeBroker.js";
 import type { KnowledgeBroker } from "../../brokers/knowledges/KnowledgeBroker.js";
+import { FunctionSourcedKnowledgeBroker } from "../../brokers/knowledges/FunctionSourcedKnowledgeBroker.js";
 import type { SourcedKnowledgeBroker } from "../../brokers/knowledges/SourcedKnowledgeBroker.js";
 import type { KnowledgeResult } from "../../models/foundations/knowledges/KnowledgeResult.js";
 import type { LoggingBroker } from "../../brokers/loggings/LoggingBroker.js";
@@ -39,7 +40,7 @@ import type { PrincipalResolver } from "../../models/coordinations/agents/Princi
 import type { ToolSelector } from "../../models/coordinations/agents/ToolSelector.js";
 import type { Skill } from "../../models/foundations/skills/Skill.js";
 import type { TraceVerbosity } from "../../models/loggings/TraceVerbosity.js";
-import { DEFAULT_MAX_HISTORY_TURNS } from "../../models/managements/runs/RunOptions.js";
+import { DEFAULT_KNOWLEDGE_CITATION_PREFIX, DEFAULT_MAX_HISTORY_TURNS } from "../../models/managements/runs/RunOptions.js";
 import type { AgentEffect } from "../../models/orchestrations/effects/AgentEffect.js";
 import type { ApprovalVerdict } from "../../models/orchestrations/effects/ApprovalVerdict.js";
 import type { AuthorizationDecision } from "../../models/orchestrations/effects/AuthorizationDecision.js";
@@ -209,16 +210,26 @@ export class StandardAgent {
     return this.useKnowledge(new FunctionKnowledgeBroker(retrieve));
   }
 
-  public useSourcedKnowledge(_broker: SourcedKnowledgeBroker): this {
-    throw new Error("not implemented");
+  // A knowledge source that says where each passage came from and how well it matched (SPEC.md
+  // 3.7, 4.1). It takes the one knowledge slot, like useKnowledge.
+  public useSourcedKnowledge(broker: SourcedKnowledgeBroker): this {
+    return this.set((configuration) => {
+      configuration.knowledgeBroker = broker;
+    });
   }
 
-  public onSourcedKnowledge(_retrieve: (query: string) => Promise<readonly KnowledgeResult[]>): this {
-    throw new Error("not implemented");
+  public onSourcedKnowledge(retrieve: (query: string) => Promise<readonly KnowledgeResult[]>): this {
+    return this.useSourcedKnowledge(new FunctionSourcedKnowledgeBroker(retrieve));
   }
 
-  public citeKnowledge(_enabled = true, _prefix = "Source: "): this {
-    throw new Error("not implemented");
+  // A grounded answer ends with the sources of the knowledge recalled into its run (SPEC.md 4.2):
+  // one line per source, written by the agent rather than asked of the model, and only on a run
+  // that answered. Off unless asked for; what is set here wins over what a request asks.
+  public citeKnowledge(enabled = true, prefix = DEFAULT_KNOWLEDGE_CITATION_PREFIX): this {
+    return this.set((configuration) => {
+      configuration.citeKnowledge = enabled;
+      configuration.citationPrefix = prefix;
+    });
   }
 
   public useSessions(broker: SessionBroker, maxHistoryTurns = DEFAULT_MAX_HISTORY_TURNS): this {
