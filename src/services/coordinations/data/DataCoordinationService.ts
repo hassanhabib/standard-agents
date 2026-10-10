@@ -45,7 +45,7 @@ export class DataCoordinationService {
       return {
         ...context,
         systemPrompt,
-        observations: [...context.observations, ...memories, ...knowledge],
+        observations: [...context.observations, ...memories, ...knowledge.map((knowledgeResult) => knowledgeResult.text)],
       };
     });
   }
