@@ -4,6 +4,7 @@ import { expect, vi, type Mock } from "vitest";
 
 import type { LoggingBroker } from "../../../brokers/loggings/LoggingBroker.js";
 import type { KnowledgeBroker } from "../../../brokers/knowledges/KnowledgeBroker.js";
+import type { SourcedKnowledgeBroker } from "../../../brokers/knowledges/SourcedKnowledgeBroker.js";
 
 import { KnowledgeService } from "./KnowledgeService.js";
 
@@ -57,6 +58,26 @@ export function createKnowledgeServiceTests(): {
   );
 
   return { knowledgeBrokerMock, loggingBrokerMock, knowledgeService };
+}
+
+export interface SourcedKnowledgeBrokerMock {
+  readonly selectSourcedKnowledge: Mock;
+}
+
+export function createSourcedKnowledgeServiceTests(): {
+  sourcedKnowledgeBrokerMock: SourcedKnowledgeBrokerMock;
+  loggingBrokerMock: LoggingBrokerMock;
+  knowledgeService: KnowledgeService;
+} {
+  const sourcedKnowledgeBrokerMock: SourcedKnowledgeBrokerMock = { selectSourcedKnowledge: vi.fn() };
+  const loggingBrokerMock = createLoggingBrokerMock();
+
+  const knowledgeService = new KnowledgeService(
+    sourcedKnowledgeBrokerMock as unknown as SourcedKnowledgeBroker,
+    loggingBrokerMock as unknown as LoggingBroker,
+  );
+
+  return { sourcedKnowledgeBrokerMock, loggingBrokerMock, knowledgeService };
 }
 
 export function createRandomString(): string {
