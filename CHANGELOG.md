@@ -4,6 +4,33 @@ All notable changes to `@hassanhabib/standard-agents` are documented here. The f
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 the four-part scheme The Standard uses: model, service, fix, build.
 
+## [0.17.0]
+
+Tracks SPEC v1.18, sections 3.2, 3.7, 4.1 and 4.2 (sourced knowledge and citation), as
+`Standard.Agents` 6.0.0.0 does.
+
+### Added
+
+- **A knowledge source can say where a passage came from.** `KnowledgeResult` carries the passage,
+  its score and its source. `SourcedKnowledgeBroker`, `FunctionSourcedKnowledgeBroker`,
+  `useSourcedKnowledge(broker)` and `onSourcedKnowledge(retrieve)` take it. A plain
+  `KnowledgeBroker` keeps working unchanged and is lifted to passages with no score and no source.
+- **The run knows its sources.** Recall puts each non-empty source of the knowledge it injected on
+  the run's context (`groundingSources`), once each, in the order first recalled. The Brain is
+  shown exactly the passages it was always shown.
+- **A grounded answer cites its sources.** `citeKnowledge(enabled = true, prefix = "Source: ")`
+  appends one line per recalled source to a run that answered, after a blank line, skipping a
+  source the answer already credits. It is written by the agent, not asked of the model, and
+  applied after the Judge, before the Response event and the session write, so the batched door,
+  the stream and the session carry the same text. It is off by default. A request's
+  `citeKnowledge` asks for it, and what the agent set wins over the request. A run that refused,
+  asked, is waiting or failed, an answer held to a response schema, and a passage with no source
+  are never cited.
+- The conformance runner drives `knowledgePassages`, `citeKnowledge`, `citationPrefix` and
+  `request.citeKnowledge`, against the reference pinned at `Standard.Agents` main. Vector 87
+  passes. Vectors 84, 85, 86 and 88 use the built-in knowledge folder, which this library does
+  not have yet, so they are reported unsupported rather than run.
+
 ## [0.16.0]
 
 Tracks SPEC v1.17, sections 4.1 and 4.8 (remote tool servers), as `Standard.Agents` 5.1.0.0 does.

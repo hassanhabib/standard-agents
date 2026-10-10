@@ -49,12 +49,34 @@ const agent = new StandardAgent()
   .mcpProcess("npx", ["-y", "@modelcontextprotocol/server-everything"]);
 ```
 
+## Answers that cite their sources
+
+A knowledge source can say where each passage came from and how well it matched, and an agent
+can end a grounded answer with those sources. The agent writes the lines, not the model, and only
+on a run that answered. Citation is off unless asked for, and what the agent sets wins over what a
+request asks.
+
+```ts
+const agent = new StandardAgent()
+  .nativeBrain("https://api.example.com/v1/", apiKey, "a-model")
+  .onSourcedKnowledge(async (query) => [
+    { text: "Enterprise customers may request a refund within 90 days.", score: 0.92, source: "refunds.md" },
+  ])
+  .citeKnowledge();
+
+// "Enterprise customers have 90 days to ask for a refund.\n\nSource: refunds.md"
+```
+
+A plain `onKnowledge` source keeps working. Its passages have no known origin, so they are never
+cited.
+
 ## What is in it
 
 - The tri-nature loop, one copy, with the reply protocol and tool routing.
 - Sessions and resumption, so a run survives the process that started it.
 - A run-once perimeter over every act: an effect ledger, claims, replay and reconciliation.
 - Tools, skills, MCP servers and remote catalogs.
+- Knowledge with scores and sources, and answers that cite them.
 - Narration as its own channel, screened before it is spoken.
 - Redaction, audit records, budgets and a circuit breaker over the generator.
 
@@ -76,7 +98,9 @@ npm run conformance
 **Core is claimed: 6 of 6.** Critical, Enterprise and Reliable are not claimable yet, and the
 reason is the runner rather than the implementation. It does not yet drive every vector field
 those profiles use (`nativeReplies`, `redact`, `concurrent`, `configurationJson` and the rest),
-so those vectors do not execute. The remote tool server vectors (45, 74, 75, 76) do, and pass. No vector has been run against this implementation and
+so those vectors do not execute. The remote tool server vectors (45, 74, 75, 76) do, and pass,
+and so does the plain-source citation vector (87). The other citation vectors (84, 85, 86, 88)
+use the built-in knowledge folder, which this library does not have yet. No vector has been run against this implementation and
 failed, which is not the same thing as passing, and the claim says only what was proven.
 
 A claim is per released version and is only ever raised by a green run of the runner.
