@@ -10,7 +10,8 @@
 // Sprint 1 wired the Core fields; SPEC v1.14 added what a tool declares about itself, the
 // repetition bound, and how a run ended; SPEC v1.15 added the streamed door and what a run spent,
 // read off the stream as it went; SPEC v1.17's remote tool servers arrived with several at once,
-// with selection over what they offer. A vector carrying a setup or expectation field this
+// with selection over what they offer; SPEC v1.18's citation arrived with a plain knowledge source
+// and a request field. A vector carrying a setup or expectation field this
 // runner does not yet honor fails as unsupported, so a profile is never claimed on a vector
 // half-run.
 
@@ -20,6 +21,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   StandardAgent,
+  createPromptRequest,
   type AgentOutcome,
   type AgentStreamEvent,
   type GeneratorBroker,
@@ -49,6 +51,9 @@ interface Vector {
   readonly extraSkills?: readonly string[];
   readonly selectTools?: readonly string[];
   readonly enforceSelection?: boolean;
+  readonly knowledgePassages?: readonly string[];
+  readonly citeKnowledge?: boolean;
+  readonly citationPrefix?: string;
 }
 
 interface ScriptedMcpServer extends McpBroker {
@@ -95,7 +100,14 @@ const SUPPORTED_SETUP_FIELDS: ReadonlySet<string> = new Set([
   "extraSkills",
   "selectTools",
   "enforceSelection",
+  "knowledgePassages",
+  "citeKnowledge",
+  "citationPrefix",
 ]);
+
+// The request fields this runner honors. Any other is unsupported, so a vector is never passed on
+// a request half-sent.
+const SUPPORTED_REQUEST_FIELDS: ReadonlySet<string> = new Set(["citeKnowledge"]);
 
 const SUPPORTED_EXPECTATIONS: ReadonlySet<string> = new Set([
   "result",
@@ -194,10 +206,21 @@ function createScriptedMcpServer(catalog: Readonly<Record<string, string>>, vect
 
 // A request with nothing in it only says "read the outcome", which is the one door this runner
 // drives. A request that carries inference options is not honored yet, so it is unsupported.
+// The prompt alone, or the prompt with the request fields the vector sets.
+function requestFor(vector: Vector): ReturnType<typeof createPromptRequest> | string {
+  const citeKnowledge = vector.request?.["citeKnowledge"];
+
+  return typeof citeKnowledge === "boolean"
+    ? { ...createPromptRequest(vector.prompt), citeKnowledge }
+    : vector.prompt;
+}
+
 function unsupportedFields(vector: Vector): string[] {
   const setup = Object.keys(vector).filter((key) => !SUPPORTED_SETUP_FIELDS.has(key));
   const expectations = Object.keys(vector.expect).filter((key) => !SUPPORTED_EXPECTATIONS.has(key));
-  const request = vector.request === undefined ? [] : Object.keys(vector.request).map((key) => `request.${key}`);
+  const request = vector.request === undefined
+    ? []
+    : Object.keys(vector.request).filter((key) => !SUPPORTED_REQUEST_FIELDS.has(key)).map((key) => `request.${key}`);
 
   return [...setup, ...request, ...expectations.map((key) => `expect.${key}`)];
 }
@@ -375,6 +398,18 @@ async function runVector(vector: Vector): Promise<VectorResult> {
     agent.useMcp(server);
   }
 
+  // Citation (SPEC.md 3.7, 4.1, 4.2, v1.18): knowledgePassages are served by a plain broker that
+  // cannot say where a passage came from, so a vector can certify that such a passage is never
+  // cited; citeKnowledge and citationPrefix are what the deployment configured.
+  if (vector.knowledgePassages !== undefined) {
+    const passages = vector.knowledgePassages;
+    agent.onKnowledge(async () => passages);
+  }
+
+  if (vector.citeKnowledge !== undefined) {
+    agent.citeKnowledge(vector.citeKnowledge, vector.citationPrefix ?? "Source: ");
+  }
+
   for (const extraSkill of vector.extraSkills ?? []) {
     agent.onSkills(async () => [{ name: `extra-${String(extraSkill.length)}`, description: "", content: extraSkill }]);
   }
@@ -397,7 +432,7 @@ async function runVector(vector: Vector): Promise<VectorResult> {
 
     const outcome = vector.streamed === true
       ? await agent.runStream(vector.prompt, async (event) => { events.push(event); })
-      : await agent.runAsync(vector.prompt);
+      : await agent.runAsync(requestFor(vector));
 
     const failures = assertExpectations(vector, outcome, tools, generator.inputs, events, mcpServers);
 
