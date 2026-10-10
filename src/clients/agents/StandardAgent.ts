@@ -11,6 +11,8 @@ import { HttpGeneratorBrokerV1 } from "../../brokers/generators/HttpGeneratorBro
 import { HttpGeneratorBroker } from "../../brokers/generators/HttpGeneratorBroker.js";
 import { FunctionKnowledgeBroker } from "../../brokers/knowledges/FunctionKnowledgeBroker.js";
 import type { KnowledgeBroker } from "../../brokers/knowledges/KnowledgeBroker.js";
+import type { SourcedKnowledgeBroker } from "../../brokers/knowledges/SourcedKnowledgeBroker.js";
+import type { KnowledgeResult } from "../../models/foundations/knowledges/KnowledgeResult.js";
 import type { LoggingBroker } from "../../brokers/loggings/LoggingBroker.js";
 import { StreamLoggingBroker } from "../../brokers/loggings/StreamLoggingBroker.js";
 import { HttpMcpBroker, type HttpMcpBrokerOptions } from "../../brokers/mcps/HttpMcpBroker.js";
@@ -205,6 +207,18 @@ export class StandardAgent {
 
   public onKnowledge(retrieve: (query: string) => Promise<readonly string[]>): this {
     return this.useKnowledge(new FunctionKnowledgeBroker(retrieve));
+  }
+
+  public useSourcedKnowledge(_broker: SourcedKnowledgeBroker): this {
+    throw new Error("not implemented");
+  }
+
+  public onSourcedKnowledge(_retrieve: (query: string) => Promise<readonly KnowledgeResult[]>): this {
+    throw new Error("not implemented");
+  }
+
+  public citeKnowledge(_enabled = true, _prefix = "Source: "): this {
+    throw new Error("not implemented");
   }
 
   public useSessions(broker: SessionBroker, maxHistoryTurns = DEFAULT_MAX_HISTORY_TURNS): this {
