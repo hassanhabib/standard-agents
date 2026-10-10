@@ -29,6 +29,7 @@ function failureCodeFor(stoppedBecause: string, identicalCallLimit: number): Age
 
   return "budget_exhausted";
 }
+import { isCitingKnowledge, withCitations } from "./RunManagementService.Citations.js";
 import { createTryCatch, type TryCatch } from "./RunManagementService.Exceptions.js";
 import { createLiveNarrator, voiceNarration, voiceObservedNarration } from "./RunManagementService.Narration.js";
 import { screened } from "./RunManagementService.Screening.js";
@@ -130,6 +131,10 @@ export class RunManagementService {
       await this.announceResolution(request);
       await this.offerTools(request.prompt);
 
+      // Resolved once, at the top, like every other request field: two turns of one run never
+      // disagree about whether its answer is cited (SPEC.md 4.2).
+      const citingKnowledge = isCitingKnowledge(this.options, request);
+
       // Precedence resolved once, at the top of the run, and never again below it. The caller's
       // transcript seeds the run; a session, when one exists, overwrites the history below.
       let context: AgentContext = {
@@ -224,6 +229,12 @@ export class RunManagementService {
           const observedBefore = context.observations.length;
           context = await this.directionCoordinationService.act(context);
           context = await screened(this.decisionCoordinationService, this.loggingBroker, this.options.screenToolOutput, context, observedBefore);
+
+          // After the Judge, before the Response event and the session write, so every door
+          // carries the one cited answer (SPEC.md 4.2); see RunManagementService.Citations.ts.
+          if (citingKnowledge) {
+            context = withCitations(context, this.options.knowledgeCitationPrefix);
+          }
           await this.loggingBroker.logOutcome(`turn ${turn}: ${context.status}`);
 
           if (context.status === "Working" && context.result.length > 0) {
