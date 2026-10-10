@@ -13,6 +13,12 @@ import { FunctionKnowledgeBroker } from "../../brokers/knowledges/FunctionKnowle
 import type { KnowledgeBroker } from "../../brokers/knowledges/KnowledgeBroker.js";
 import { FunctionSourcedKnowledgeBroker } from "../../brokers/knowledges/FunctionSourcedKnowledgeBroker.js";
 import type { SourcedKnowledgeBroker } from "../../brokers/knowledges/SourcedKnowledgeBroker.js";
+import {
+  createKnowledgeFolder,
+  DEFAULT_KNOWLEDGE_MAX_RESULTS,
+  DEFAULT_KNOWLEDGE_MINIMUM_SCORE,
+  DEFAULT_KNOWLEDGE_PATTERN,
+} from "../../models/foundations/knowledges/KnowledgeFolder.js";
 import type { KnowledgeResult } from "../../models/foundations/knowledges/KnowledgeResult.js";
 import type { LoggingBroker } from "../../brokers/loggings/LoggingBroker.js";
 import { StreamLoggingBroker } from "../../brokers/loggings/StreamLoggingBroker.js";
@@ -220,6 +226,23 @@ export class StandardAgent {
 
   public onSourcedKnowledge(retrieve: (query: string) => Promise<readonly KnowledgeResult[]>): this {
     return this.useSourcedKnowledge(new FunctionSourcedKnowledgeBroker(retrieve));
+  }
+
+  // A folder of documents searched each turn, the most relevant passages seeded into the turn
+  // (SPEC.md 4.2, the Local mode). Every document the pattern names is read, in this folder and
+  // beneath it; passages are ranked by relevance to the task, at most maxResults of them reach a
+  // turn, and none scoring below minScore does. Each passage is sourced with its document's path
+  // relative to the folder, so citeKnowledge credits it out of the box. A knowledge broker, when
+  // one is configured, answers instead whatever order the verbs were called in.
+  public knowledge(
+    path: string,
+    pattern = DEFAULT_KNOWLEDGE_PATTERN,
+    maxResults = DEFAULT_KNOWLEDGE_MAX_RESULTS,
+    minScore = DEFAULT_KNOWLEDGE_MINIMUM_SCORE,
+  ): this {
+    return this.set((configuration) => {
+      configuration.knowledgeFolder = createKnowledgeFolder(path, pattern, maxResults, minScore);
+    });
   }
 
   // A grounded answer ends with the sources of the knowledge recalled into its run (SPEC.md 4.2):
