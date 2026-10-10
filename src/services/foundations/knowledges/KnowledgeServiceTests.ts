@@ -185,3 +185,10 @@ export function verifyNoOtherCalls(mock: object, expectedCalls: Readonly<Record<
     expect(mocked.mock.calls.length, `${name} call count`).toBe(expectedCalls[name] ?? 0);
   }
 }
+
+export function createErrnoException(code: string): NodeJS.ErrnoException {
+  const error: NodeJS.ErrnoException = new Error(`${code}: ${createRandomString()}`);
+  error.code = code;
+
+  return error;
+}
