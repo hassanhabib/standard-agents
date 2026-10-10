@@ -70,13 +70,30 @@ const agent = new StandardAgent()
 A plain `onKnowledge` source keeps working. Its passages have no known origin, so they are never
 cited.
 
+A folder of documents is knowledge too, and it is citable with nothing else configured: each
+passage is credited to its document's path relative to the folder.
+
+```ts
+const agent = new StandardAgent()
+  .nativeBrain("https://api.example.com/v1/", apiKey, "a-model")
+  .knowledge("./knowledge", "*.md", 3)
+  .citeKnowledge();
+
+// "Enterprise customers have 90 days to ask for a refund.\n\nSource: policies/refunds.md"
+```
+
+Every document the pattern names, in the folder and beneath it, is ranked against the task the
+way the reference ranks it, and at most `maxResults` passages reach a turn. A knowledge broker,
+when one is configured, answers instead.
+
 ## What is in it
 
 - The tri-nature loop, one copy, with the reply protocol and tool routing.
 - Sessions and resumption, so a run survives the process that started it.
 - A run-once perimeter over every act: an effect ledger, claims, replay and reconciliation.
 - Tools, skills, MCP servers and remote catalogs.
-- Knowledge with scores and sources, and answers that cite them.
+- Knowledge from a folder or a source of your own, with scores and sources, and answers that cite
+  them.
 - Narration as its own channel, screened before it is spoken.
 - Redaction, audit records, budgets and a circuit breaker over the generator.
 
@@ -99,9 +116,9 @@ npm run conformance
 reason is the runner rather than the implementation. It does not yet drive every vector field
 those profiles use (`nativeReplies`, `redact`, `concurrent`, `configurationJson` and the rest),
 so those vectors do not execute. The remote tool server vectors (45, 74, 75, 76) do, and pass,
-and so does the plain-source citation vector (87). The other citation vectors (84, 85, 86, 88)
-use the built-in knowledge folder, which this library does not have yet. No vector has been run against this implementation and
-failed, which is not the same thing as passing, and the claim says only what was proven.
+and so does every citation vector (84 through 88), against real files in a real knowledge
+folder. No vector has been run against this implementation and failed, which is not the same
+thing as passing, and the claim says only what was proven.
 
 A claim is per released version and is only ever raised by a green run of the runner.
 
