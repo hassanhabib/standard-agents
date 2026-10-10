@@ -19,6 +19,12 @@ export interface PromptRequest {
   readonly callerTools: readonly ToolDefinition[];
   readonly providerOptionsJson: string | null;
   readonly decision: ApprovalDecision | null;
+
+  // Whether this answer ends with the sources of the knowledge recalled into its run (SPEC.md 4.2,
+  // v1.18). Null means the caller expressed no opinion. What the deployment configured wins: a
+  // deployment that must cite cannot be switched off by a caller, and one that never cites cannot
+  // be switched on.
+  readonly citeKnowledge?: boolean | null;
 }
 
 export function createPromptRequest(prompt: string, sessionId = ""): PromptRequest {
