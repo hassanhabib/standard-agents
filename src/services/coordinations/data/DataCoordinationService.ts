@@ -1,6 +1,7 @@
 import type { LoggingBroker } from "../../../brokers/loggings/LoggingBroker.js";
 import type { McpTool } from "../../../models/brokers/mcps/McpTool.js";
 import type { AgentSession } from "../../../models/brokers/sessions/AgentSession.js";
+import type { KnowledgeResult } from "../../../models/foundations/knowledges/KnowledgeResult.js";
 import type { AgentContext } from "../../../models/orchestrations/agents/AgentContext.js";
 import type { RecollectionOrchestrationService } from "../../orchestrations/data/recollections/RecollectionOrchestrationService.js";
 import type { RetrievalOrchestrationService } from "../../orchestrations/data/retrievals/RetrievalOrchestrationService.js";
@@ -46,6 +47,7 @@ export class DataCoordinationService {
         ...context,
         systemPrompt,
         observations: [...context.observations, ...memories, ...knowledge.map((knowledgeResult) => knowledgeResult.text)],
+        groundingSources: withGroundingSources(context.groundingSources, knowledge),
       };
     });
   }
@@ -71,6 +73,17 @@ export class DataCoordinationService {
   public retrieveRemoteTools(): Promise<readonly McpTool[]> {
     return this.tryCatch(async () => await this.retrievalOrchestrationService.retrieveRemoteTools());
   }
+}
+
+// Each source once, in the order first recalled, and never an empty one: a passage whose origin is
+// unknown can never be cited (SPEC.md 3.2, 3.7). Recall runs every turn, so what an earlier turn
+// recalled is already here and keeps its place.
+function withGroundingSources(groundingSources: readonly string[], knowledge: readonly KnowledgeResult[]): string[] {
+  const recalledSources = knowledge
+    .map((knowledgeResult) => knowledgeResult.source)
+    .filter((source) => source.trim().length > 0);
+
+  return [...new Set([...groundingSources, ...recalledSources])];
 }
 
 // The caller's vocabulary, appended per run (SPEC.md 6.1), in the same line format the tool
