@@ -12,7 +12,8 @@ describe("DataCoordinationService recall logic", () => {
     const context = createRandomContext();
     const instructions = createRandomString();
     const memories = [createRandomString()];
-    const knowledge = [createRandomString(), createRandomString()];
+    const passages = [createRandomString(), createRandomString()];
+    const knowledge = passages.map((passage) => ({ text: passage, score: null, source: "" }));
     retrievalOrchestrationServiceMock.retrieveInstructions.mockResolvedValue(instructions);
     recollectionOrchestrationServiceMock.recallMemories.mockResolvedValue(memories);
     retrievalOrchestrationServiceMock.retrieveGrounding.mockResolvedValue(knowledge);
@@ -20,7 +21,7 @@ describe("DataCoordinationService recall logic", () => {
     const expectedContext = {
       ...context,
       systemPrompt: instructions,
-      observations: [...context.observations, ...memories, ...knowledge],
+      observations: [...context.observations, ...memories, ...passages],
     };
 
     // when
