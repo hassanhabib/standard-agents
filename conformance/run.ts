@@ -11,11 +11,13 @@
 // repetition bound, and how a run ended; SPEC v1.15 added the streamed door and what a run spent,
 // read off the stream as it went; SPEC v1.17's remote tool servers arrived with several at once,
 // with selection over what they offer; SPEC v1.18's citation arrived with a plain knowledge source
-// and a request field. A vector carrying a setup or expectation field this
+// and a request field, then with the built-in knowledge folder and a scripted Gate verdict. A
+// vector carrying a setup or expectation field this
 // runner does not yet honor fails as unsupported, so a profile is never claimed on a vector
 // half-run.
 
-import { readdir, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -54,6 +56,9 @@ interface Vector {
   readonly knowledgePassages?: readonly string[];
   readonly citeKnowledge?: boolean;
   readonly citationPrefix?: string;
+  readonly knowledge?: Readonly<Record<string, string>>;
+  readonly knowledgeMaxResults?: number;
+  readonly gateVerdict?: string;
 }
 
 interface ScriptedMcpServer extends McpBroker {
@@ -103,6 +108,9 @@ const SUPPORTED_SETUP_FIELDS: ReadonlySet<string> = new Set([
   "knowledgePassages",
   "citeKnowledge",
   "citationPrefix",
+  "knowledge",
+  "knowledgeMaxResults",
+  "gateVerdict",
 ]);
 
 // The request fields this runner honors. Any other is unsupported, so a vector is never passed on
@@ -374,8 +382,9 @@ async function runVector(vector: Vector): Promise<VectorResult> {
   const generator = createScriptedGenerator(vector.generatorReplies);
 
   // Runner contract 3: Skill returns any text; Memory, Knowledge and the remote servers stay not
-  // configured; the Gate allows and the Judge scores 1 because nothing configured them; the log
-  // is silent. Nothing below the client is replaced.
+  // configured unless the vector gives them; the Gate allows unless the vector scripts a verdict,
+  // and the Judge scores 1, because nothing configured them; the log is silent. Nothing below the
+  // client is replaced.
   const agent = new StandardAgent()
     .useGenerator(generator)
     .onSkills(async () => [{ name: "test-agent", description: "", content: "You are a test agent." }])
@@ -406,6 +415,15 @@ async function runVector(vector: Vector): Promise<VectorResult> {
     agent.onKnowledge(async () => passages);
   }
 
+  // The built-in knowledge folder (SPEC.md 4.2, the Local mode): the vector's documents written as
+  // real files into a real folder, so the ranking is certified against files rather than against
+  // a stub that could agree with any implementation.
+  const knowledgePath = vector.knowledge === undefined ? null : await writeKnowledgeFolder(vector.knowledge);
+
+  if (knowledgePath !== null) {
+    agent.knowledge(knowledgePath, "*.md", vector.knowledgeMaxResults ?? 3);
+  }
+
   if (vector.citeKnowledge !== undefined) {
     agent.citeKnowledge(vector.citeKnowledge, vector.citationPrefix ?? "Source: ");
   }
@@ -425,6 +443,14 @@ async function runVector(vector: Vector): Promise<VectorResult> {
     agent.enforceSelection();
   }
 
+  // The scripted Gate (runner contract 3): the vector's verdict for whatever the Gate screens. A
+  // vector without one leaves the Gate not configured, which allows.
+  const gateVerdict = vector.gateVerdict;
+
+  if (gateVerdict !== undefined) {
+    agent.onGate(async () => gateVerdict);
+  }
+
   try {
     // A streamed vector is driven through the streamed door, and what that door yielded is kept,
     // because some guarantees are only observable on the stream itself.
@@ -441,7 +467,24 @@ async function runVector(vector: Vector): Promise<VectorResult> {
       : { vector, passed: false, detail: failures.join("; ") };
   } catch (error: unknown) {
     return { vector, passed: false, detail: `threw ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}` };
+  } finally {
+    if (knowledgePath !== null) {
+      await rm(knowledgePath, { recursive: true, force: true });
+    }
   }
+}
+
+// A fresh folder per vector, so no vector ranks against another's documents.
+async function writeKnowledgeFolder(documents: Readonly<Record<string, string>>): Promise<string> {
+  const knowledgePath = await mkdtemp(join(tmpdir(), "standard-agents-conformance-knowledge-"));
+
+  for (const [name, content] of Object.entries(documents)) {
+    const documentPath = join(knowledgePath, name);
+    await mkdir(dirname(documentPath), { recursive: true });
+    await writeFile(documentPath, content, "utf8");
+  }
+
+  return knowledgePath;
 }
 
 function firstLine(text: string): string {
