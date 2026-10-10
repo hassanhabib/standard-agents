@@ -16,6 +16,7 @@ export interface SkillServiceMock {
 
 export interface KnowledgeServiceMock {
   readonly retrieve: Mock;
+  readonly retrieveSourced: Mock;
 }
 
 export interface ExternalToolServiceMock {
@@ -63,7 +64,7 @@ export function createRetrievalOrchestrationServiceTests(toolCatalog = "", toolC
   retrievalOrchestrationService: RetrievalOrchestrationService;
 } {
   const skillServiceMock: SkillServiceMock = { retrieveSkills: vi.fn(), retrieveSkillCatalog: vi.fn() };
-  const knowledgeServiceMock: KnowledgeServiceMock = { retrieve: vi.fn() };
+  const knowledgeServiceMock: KnowledgeServiceMock = { retrieve: vi.fn(), retrieveSourced: vi.fn() };
   const externalToolServiceMock: ExternalToolServiceMock = { call: vi.fn(), retrieveTools: vi.fn() };
   const loggingBrokerMock = createLoggingBrokerMock();
 

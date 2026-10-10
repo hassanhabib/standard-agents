@@ -26,11 +26,17 @@ export interface RunOptions {
   readonly toolNarrations: ReadonlyMap<string, ToolNarration>;
   readonly toolSelector: ToolSelector | null;
   readonly principalResolver: PrincipalResolver | null;
+
+  // Citation (SPEC.md 4.2, v1.18): what the deployment configured, null when it expressed no
+  // opinion, and what each citation line starts with.
+  readonly configuredCiteKnowledge: boolean | null;
+  readonly knowledgeCitationPrefix: string;
 }
 
 export const DEFAULT_MAX_TURNS = 7;
 export const DEFAULT_MAX_HISTORY_TURNS = 20;
 export const DEFAULT_IDENTICAL_CALL_LIMIT = 8;
+export const DEFAULT_KNOWLEDGE_CITATION_PREFIX = "Source: ";
 
 export function createRunOptions(overrides: Partial<RunOptions> = {}): RunOptions {
   return {
@@ -47,6 +53,8 @@ export function createRunOptions(overrides: Partial<RunOptions> = {}): RunOption
     toolNarrations: new Map(),
     toolSelector: null,
     principalResolver: null,
+    configuredCiteKnowledge: null,
+    knowledgeCitationPrefix: DEFAULT_KNOWLEDGE_CITATION_PREFIX,
     ...overrides,
   };
 }

@@ -14,6 +14,12 @@ export interface AgentContext {
   readonly inference: ResolvedInference | null;
   readonly systemPrompt: string;
   readonly observations: readonly string[];
+
+  // Where the knowledge recalled into this run came from (SPEC.md 3.2, 3.7, v1.18): each non-empty
+  // source once, in the order first recalled. Beside the observations rather than inside them, so
+  // the Brain is shown exactly the passages it was always shown, and a citation can be a fact the
+  // run knows rather than a line the model may or may not write (SPEC.md 4.2).
+  readonly groundingSources: readonly string[];
   readonly toolExchanges: readonly ToolExchange[];
   readonly toolCallId: string;
 
@@ -44,6 +50,7 @@ export function createAgentContext(prompt: string): AgentContext {
     inference: null,
     systemPrompt: "",
     observations: [],
+    groundingSources: [],
     toolExchanges: [],
     toolCallId: "",
     assistantContent: "",
