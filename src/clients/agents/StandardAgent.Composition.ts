@@ -165,6 +165,8 @@ export function compose(configuration: AgentConfiguration): RunManagementService
       toolNarrations: renderToolNarrations(tools),
       toolSelector: configuration.toolSelector,
       principalResolver: configuration.principalResolver,
+      configuredCiteKnowledge: configuration.citeKnowledge,
+      knowledgeCitationPrefix: configuration.citationPrefix,
     }),
   );
 }
