@@ -13,7 +13,7 @@ import { KnowledgeValidationException } from "../../../models/foundations/knowle
 
 export type TryCatch = <T>(routine: () => Promise<T>) => Promise<T>;
 
-const CRITICAL_CODES = new Set(["ENOENT", "EACCES", "EPERM"]);
+const CRITICAL_CODES = new Set(["ENOENT", "ENOTDIR", "EACCES", "EPERM"]);
 
 export function createTryCatch(loggingBroker: LoggingBroker): TryCatch {
   return async function tryCatch<T>(routine: () => Promise<T>): Promise<T> {
