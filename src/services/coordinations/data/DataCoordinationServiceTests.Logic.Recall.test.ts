@@ -38,6 +38,36 @@ describe("DataCoordinationService recall logic", () => {
     verifyNoOtherCalls(loggingBrokerMock, { logPayload: 2 });
   });
 
+  it("ShouldRecordEachRecalledSourceOnceInTheOrderFirstRecalledAsync", async () => {
+    // given
+    const { retrievalOrchestrationServiceMock, recollectionOrchestrationServiceMock, dataCoordinationService } =
+      createDataCoordinationServiceTests();
+
+    const earlierSource = createRandomString();
+    const firstSource = createRandomString();
+    const secondSource = createRandomString();
+    const context = { ...createRandomContext(), groundingSources: [earlierSource] };
+
+    const knowledge = [
+      { text: createRandomString(), score: 0.9, source: firstSource },
+      { text: createRandomString(), score: null, source: "" },
+      { text: createRandomString(), score: 0.7, source: earlierSource },
+      { text: createRandomString(), score: 0.6, source: firstSource },
+      { text: createRandomString(), score: 0.5, source: secondSource },
+    ];
+
+    retrievalOrchestrationServiceMock.retrieveInstructions.mockResolvedValue(createRandomString());
+    recollectionOrchestrationServiceMock.recallMemories.mockResolvedValue([]);
+    retrievalOrchestrationServiceMock.retrieveGrounding.mockResolvedValue(knowledge);
+
+    // when
+    const actualContext = await dataCoordinationService.recall(context);
+
+    // then
+    expect(actualContext.groundingSources).toEqual([earlierSource, firstSource, secondSource]);
+    expect(actualContext.observations).toEqual([...context.observations, ...knowledge.map((result) => result.text)]);
+  });
+
   it("ShouldAppendCallerVocabularyOnRecallIfInferenceCarriesCallerToolsAsync", async () => {
     // given
     const { retrievalOrchestrationServiceMock, recollectionOrchestrationServiceMock, loggingBrokerMock, dataCoordinationService } =
