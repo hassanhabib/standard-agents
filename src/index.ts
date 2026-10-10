@@ -158,6 +158,9 @@ export { FunctionContractBroker } from "./brokers/contracts/FunctionContractBrok
 export type { KnowledgeBroker } from "./brokers/knowledges/KnowledgeBroker.js";
 export { NotConfiguredKnowledgeBroker } from "./brokers/knowledges/NotConfiguredKnowledgeBroker.js";
 export { FunctionKnowledgeBroker } from "./brokers/knowledges/FunctionKnowledgeBroker.js";
+export type { SourcedKnowledgeBroker } from "./brokers/knowledges/SourcedKnowledgeBroker.js";
+export { FunctionSourcedKnowledgeBroker } from "./brokers/knowledges/FunctionSourcedKnowledgeBroker.js";
+export type { KnowledgeResult } from "./models/foundations/knowledges/KnowledgeResult.js";
 
 // Data: memory (SPEC.md 4.2, 7 invariant 4).
 export type { MemoryBroker } from "./brokers/memorys/MemoryBroker.js";

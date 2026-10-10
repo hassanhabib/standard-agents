@@ -12,7 +12,8 @@ describe("DataCoordinationService recall logic", () => {
     const context = createRandomContext();
     const instructions = createRandomString();
     const memories = [createRandomString()];
-    const knowledge = [createRandomString(), createRandomString()];
+    const passages = [createRandomString(), createRandomString()];
+    const knowledge = passages.map((passage) => ({ text: passage, score: null, source: "" }));
     retrievalOrchestrationServiceMock.retrieveInstructions.mockResolvedValue(instructions);
     recollectionOrchestrationServiceMock.recallMemories.mockResolvedValue(memories);
     retrievalOrchestrationServiceMock.retrieveGrounding.mockResolvedValue(knowledge);
@@ -20,7 +21,7 @@ describe("DataCoordinationService recall logic", () => {
     const expectedContext = {
       ...context,
       systemPrompt: instructions,
-      observations: [...context.observations, ...memories, ...knowledge],
+      observations: [...context.observations, ...memories, ...passages],
     };
 
     // when
@@ -35,6 +36,36 @@ describe("DataCoordinationService recall logic", () => {
     verifyNoOtherCalls(retrievalOrchestrationServiceMock, { retrieveInstructions: 1, retrieveGrounding: 1 });
     verifyNoOtherCalls(recollectionOrchestrationServiceMock, { recallMemories: 1 });
     verifyNoOtherCalls(loggingBrokerMock, { logPayload: 2 });
+  });
+
+  it("ShouldRecordEachRecalledSourceOnceInTheOrderFirstRecalledAsync", async () => {
+    // given
+    const { retrievalOrchestrationServiceMock, recollectionOrchestrationServiceMock, dataCoordinationService } =
+      createDataCoordinationServiceTests();
+
+    const earlierSource = createRandomString();
+    const firstSource = createRandomString();
+    const secondSource = createRandomString();
+    const context = { ...createRandomContext(), groundingSources: [earlierSource] };
+
+    const knowledge = [
+      { text: createRandomString(), score: 0.9, source: firstSource },
+      { text: createRandomString(), score: null, source: "" },
+      { text: createRandomString(), score: 0.7, source: earlierSource },
+      { text: createRandomString(), score: 0.6, source: firstSource },
+      { text: createRandomString(), score: 0.5, source: secondSource },
+    ];
+
+    retrievalOrchestrationServiceMock.retrieveInstructions.mockResolvedValue(createRandomString());
+    recollectionOrchestrationServiceMock.recallMemories.mockResolvedValue([]);
+    retrievalOrchestrationServiceMock.retrieveGrounding.mockResolvedValue(knowledge);
+
+    // when
+    const actualContext = await dataCoordinationService.recall(context);
+
+    // then
+    expect(actualContext.groundingSources).toEqual([earlierSource, firstSource, secondSource]);
+    expect(actualContext.observations).toEqual([...context.observations, ...knowledge.map((result) => result.text)]);
   });
 
   it("ShouldAppendCallerVocabularyOnRecallIfInferenceCarriesCallerToolsAsync", async () => {

@@ -19,7 +19,7 @@ describe("RetrievalOrchestrationService retrieveGrounding exceptions", () => {
       invalidKnowledgeException,
     );
 
-    knowledgeServiceMock.retrieve.mockRejectedValue(knowledgeValidationException);
+    knowledgeServiceMock.retrieveSourced.mockRejectedValue(knowledgeValidationException);
 
     // when
     const retrieveTask = retrievalOrchestrationService.retrieveGrounding(createRandomString());
@@ -30,7 +30,7 @@ describe("RetrievalOrchestrationService retrieveGrounding exceptions", () => {
     expect(actualException).toBeInstanceOf(AgentOrchestrationDependencyValidationException);
     expectSameExceptionAs(actualException, expectedAgentOrchestrationDependencyValidationException);
     expectSameExceptionAs(loggingBrokerMock.logError.mock.calls[0]?.[0], expectedAgentOrchestrationDependencyValidationException);
-    verifyNoOtherCalls(knowledgeServiceMock, { retrieve: 1 });
+    verifyNoOtherCalls(knowledgeServiceMock, { retrieveSourced: 1 });
     verifyNoOtherCalls(loggingBrokerMock, { logError: 1 });
   });
 

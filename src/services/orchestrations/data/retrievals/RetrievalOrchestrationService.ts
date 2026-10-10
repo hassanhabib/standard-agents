@@ -1,3 +1,4 @@
+import type { KnowledgeResult } from "../../../../models/foundations/knowledges/KnowledgeResult.js";
 import type { LoggingBroker } from "../../../../brokers/loggings/LoggingBroker.js";
 import type { McpTool } from "../../../../models/brokers/mcps/McpTool.js";
 import { ExternalToolDependencyException } from "../../../../models/foundations/externalTools/exceptions/ExternalToolDependencyException.js";
@@ -61,7 +62,9 @@ export class RetrievalOrchestrationService {
     });
   }
 
-  public retrieveGrounding(query: string): Promise<readonly string[]> {
+  // Each passage with where it came from (SPEC.md 3.7, v1.18), so the run can know its sources
+  // without the Brain being shown anything it was not always shown.
+  public retrieveGrounding(query: string): Promise<readonly KnowledgeResult[]> {
     return this.tryCatch(async () => {
       // A run that carries an answer to an act it already proposed asks for nothing new, so there
       // is no question here to look anything up for. The foundation is right to refuse an empty
@@ -70,7 +73,7 @@ export class RetrievalOrchestrationService {
         return [];
       }
 
-      const knowledge = await this.knowledgeService.retrieve(query);
+      const knowledge = await this.knowledgeService.retrieveSourced(query);
       await this.loggingBroker.logProcess("Data", `Retrieved ${knowledge.length} knowledge matches`);
 
       return knowledge;
