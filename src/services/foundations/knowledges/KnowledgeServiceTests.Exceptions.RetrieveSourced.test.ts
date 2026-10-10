@@ -7,7 +7,7 @@ import { KnowledgeServiceException } from "../../../models/foundations/knowledge
 import { createErrnoException, createRandomString, createSourcedKnowledgeServiceTests, expectSameExceptionAs, verifyNoOtherCalls } from "./KnowledgeServiceTests.js";
 
 describe("KnowledgeService retrieve sourced exceptions", () => {
-  it.each(["ENOENT", "EACCES", "EPERM"])(
+  it.each(["ENOENT", "ENOTDIR", "EACCES", "EPERM"])(
     "ShouldThrowDependencyExceptionOnRetrieveSourcedIfCriticalErrorOccursAndLogItAsync (%s)",
     async (code) => {
       // given
